@@ -266,8 +266,6 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
 
   switch(cmd) {
 
-
-
     case IOCTL_GET:
       printk(KERN_INFO "ELE784 -> IOCTL_GET\n");
       // 1. Copy request from user space
@@ -382,30 +380,14 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
 
     case IOCTL_PANTILT_RELATIVE:
     {
-      /*******************************************************************************
-      Ici, il faut transmettre le tableau [Pan, Tilt] reçu de l'usager 
-      *******************************************************************************/  
       printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RELATIVE 1\n");
       struct pantilt_relative {
-        int8_t delta_pan;    // 0=stop, 1=cw, 0xFF=ccw
-        uint8_t pan_speed;   // 0..255
-        int8_t delta_tilt;   // 0=stop, 1=up, 0xFF=down
-        uint8_t tilt_speed;  // 0..255
-      } pt;
-     
-      /* 1) Make sure file->private_data and interface exist */
-      if (!file->private_data) {
-        printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE : no private_data\n");
-        retval = -ENODEV;
-        break;
-      }
-      // 2) Get the driver struct and check interface
-      struct orbit_driver *drv = (struct orbit_driver *)file->private_data;
-      if (!drv->interface) {
-        printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE : interface missing\n");
-        retval = -ENODEV;
-        break;
-      }
+        int8_t delta_pan;
+        uint8_t pan_speed;
+        int8_t delta_tilt;
+        uint8_t tilt_speed;
+      }pt;
+          
       // 2.Copy the pan/tilt values from user space
       if (copy_from_user(&pt, (struct pantilt_relative __user *)arg, sizeof(struct pantilt_relative))) {
         printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE : copy_from_user failed\n");
@@ -413,33 +395,39 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
         break;
       }
       // 3.MORE DETAILED LOGGING
-      printk(KERN_INFO "ELE784 -> Pan/Tilt values from user: pan=%d speed=%u tilt=%d speed=%u\n",pt.delta_pan, pt.pan_speed, pt.delta_tilt, pt.tilt_speed);
-
+      printk(KERN_INFO "ELE784 -> Pan/Tilt from user: pan=%d (speed=%u) tilt=%d (speed=%u)\n",
+            pt.delta_pan, pt.pan_speed, pt.delta_tilt, pt.tilt_speed);
+  
       /* 4) Snap local pointers and get a stable udev ref */
-      struct usb_interface *iface = drv->interface;
-      struct usb_device *udev = interface_to_usbdev(iface);
-      if (!udev) {
-          printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE : interface_to_usbdev returned NULL\n");
+      /* Get stable device references */
+      struct usb_interface *iface = driver->interface;
+      if (!iface) {
+          printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE : interface is NULL\n");
           retval = -ENODEV;
           break;
       }
+      struct usb_device *udev_local= interface_to_usbdev(iface);
+      if (!udev_local) {
+        printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE : interface_to_usbdev returned NULL\n");
+        retval = -ENODEV;
+        break;
+      }
       /* increment refcount so udev isn't freed while we use it */
-      usb_get_dev(udev);
+      usb_get_dev(udev_local);
 
-      /* 5) sanitize speeds: if direction != 0 and speed==0 -> set to 1 (device reported min=1) */
+      /* Force minimum speed if direction is set but speed is 0 */
       if (pt.delta_pan != 0 && pt.pan_speed == 0) {
-        pt.pan_speed = 1;
-        printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RELATIVE :  forced pan_speed=1 (device min)\n");
+          pt.pan_speed = 1;
       }
       if (pt.delta_tilt != 0 && pt.tilt_speed == 0) {
-        pt.tilt_speed = 1;
-        printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RELATIVE :  forced tilt_speed=1 (device min)\n");
+          pt.tilt_speed = 1;
       }
       
       /* 6) build wValue/wIndex (UVC: high byte = control selector, wIndex: high byte = interface) */
       uint16_t wValue = CT_PANTILT_RELATIVE_CONTROL << 8;
-      uint8_t interface_number = udev->actconfig->interface[0]->cur_altsetting->desc.bInterfaceNumber;
-      uint8_t entity_id = 9; // Pan/Tilt Relative Control
+      uint8_t interface_number = iface->cur_altsetting->desc.bInterfaceNumber;
+      /* Try different entity IDs - Camera Terminal is usually 1 or 2 */
+      uint8_t entity_id = 1;  // Try 2 if this doesn't work
       uint16_t wIndex = (entity_id << 8) | interface_number;
       
       // LOG THE USB PARAMETERS
@@ -449,10 +437,15 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       uint8_t *data;
       data = kmalloc(4, GFP_KERNEL);
       if (!data) {
-          retval = -ENOMEM;
-          break;
+        retval = -ENOMEM;
+        break;
       }
-      // Pack the deltas in little-endian
+      /* Pack data according to UVC spec:
+      * Byte 0: Pan direction (signed int8)
+      * Byte 1: Pan speed (uint8)
+      * Byte 2: Tilt direction (signed int8)
+      * Byte 3: Tilt speed (uint8)
+      */
       data[0] = pt.delta_pan;
       data[1] = pt.pan_speed;
       data[2] = pt.delta_tilt;
@@ -461,8 +454,8 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       printk(KERN_INFO "ELE784 -> Sending bytes: [0x%02x 0x%02x 0x%02x 0x%02x]\n",data[0], data[1], data[2], data[3]);
 
       // Send the control message
-      retval = usb_control_msg(udev,
-                              usb_sndctrlpipe(udev, 0x00),
+      retval = usb_control_msg(udev_local,
+                              usb_sndctrlpipe(udev_local, 0x00),
                               SET_CUR, // 0x01, set current value
                               USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
                               wValue,
@@ -477,6 +470,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       }
       kfree(data); // free DMA-safe buffer
       data = NULL;
+      usb_put_dev(udev_local);  // CRITICAL: Decrement reference count
       break;
     }
     case IOCTL_PANTILT_GET_INFO:
