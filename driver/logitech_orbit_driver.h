@@ -36,6 +36,14 @@ MODULE_LICENSE("GPL");
 #define DEV_MINOR       0x00
 #define DEV_MINORS      0x01
 
+
+#define GET_CUR  0x81
+#define GET_MIN  0x82
+#define GET_MAX  0x83
+#define GET_RES  0x84
+#define GET_DEF  0x87
+#define GET_INFO 0x86
+
 //tableau ou chaque element est une struct usb_device_id.
 // static symbol cannot be accessed from other .c files : it is private to this compilation unit.
 //Because it’s static:

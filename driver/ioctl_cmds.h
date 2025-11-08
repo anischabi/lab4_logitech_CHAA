@@ -11,6 +11,8 @@
 #define IOCTL_STREAMOFF          _IOW(MAGIC_VAL, 0x40, int)
 #define IOCTL_PANTILT_RELATIVE   _IOW(MAGIC_VAL, 0x50, int)
 #define IOCTL_PANTILT_RESET      _IOW(MAGIC_VAL, 0x60, int)
+#define IOCTL_PANTILT_GET_INFO   _IOR(MAGIC_VAL, 0x70, int)  // NEW
+#define IOCTL_PANTILT_GET_CAPS   _IOR(MAGIC_VAL, 0x80, int)  // NEW
 
 struct usb_request {
   uint8_t  request;

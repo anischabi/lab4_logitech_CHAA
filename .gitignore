@@ -5,3 +5,5 @@
 *.symvers
 *.order
 *.o
+*.txt
+test_control
