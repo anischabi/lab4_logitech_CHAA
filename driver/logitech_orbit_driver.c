@@ -31,10 +31,12 @@ int ele784_open(struct inode *inode, struct file *file) {
 int ele784_probe(struct usb_interface *interface, const struct usb_device_id *id) {
   struct orbit_driver *dev;
   struct usb_host_interface *iface_desc;
-  int i;
+  int i,j;
   int retval;
 
-  printk(KERN_INFO "ELE784 -> Probe\n");
+  printk(KERN_INFO "ELE784 -> Probe: device connected\n");
+
+
 
   /* Allocate driver struct */
   dev = kzalloc(sizeof(*dev), GFP_KERNEL);
@@ -65,6 +67,23 @@ int ele784_probe(struct usb_interface *interface, const struct usb_device_id *id
   // - cur_altsetting = current alternate setting of the interface : Every USB interface can have alternate settings (different endpoints, bandwidth, etc.)
   // -  iface_desc is of type struct usb_host_interface * : It contains iface_desc->desc, which has the class, subclass, protocol, and endpoint info.
   iface_desc = interface->cur_altsetting;
+
+  printk(KERN_INFO "ELE784 -> Probe interface number: %d\n", iface_desc->desc.bInterfaceNumber);
+  // Print interface class info
+  printk(KERN_INFO "ELE784 -> Interface class: 0x%02x, subclass: 0x%02x, protocol: 0x%02x\n",
+         iface_desc->desc.bInterfaceClass,
+         iface_desc->desc.bInterfaceSubClass,
+         iface_desc->desc.bInterfaceProtocol);
+
+  // Print all alternate settings and endpoint info for this interface
+  for (i = 0; i < interface->num_altsetting; i++) {
+    struct usb_host_interface *alts = &interface->altsetting[i];
+    printk(KERN_INFO "ELE784 -> AltSetting %d: bNumEndpoints=%d\n",alts->desc.bAlternateSetting, alts->desc.bNumEndpoints);
+    for (j = 0; j < alts->desc.bNumEndpoints; j++) {
+      struct usb_endpoint_descriptor *epd = &alts->endpoint[j].desc;
+      printk(KERN_INFO "ELE784 ->  Endpoint %d: addr=0x%02x, attr=0x%02x, maxpacket=%d\n",j, epd->bEndpointAddress, epd->bmAttributes, epd->wMaxPacketSize);
+    }
+  }
   
  /* 2.
   * Check if this interface belongs to the Video class.
@@ -414,24 +433,17 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       }
       /* increment refcount so udev isn't freed while we use it */
       usb_get_dev(udev_local);
-
-      /* Force minimum speed if direction is set but speed is 0 */
-      if (pt.delta_pan != 0 && pt.pan_speed == 0) {
-          pt.pan_speed = 1;
-      }
-      if (pt.delta_tilt != 0 && pt.tilt_speed == 0) {
-          pt.tilt_speed = 1;
-      }
       
       /* 6) build wValue/wIndex (UVC: high byte = control selector, wIndex: high byte = interface) */
-      uint16_t wValue = CT_PANTILT_RELATIVE_CONTROL << 8;
-      uint8_t interface_number = iface->cur_altsetting->desc.bInterfaceNumber;
-      /* Try different entity IDs - Camera Terminal is usually 1 or 2 */
-      uint8_t entity_id = 1;  // Try 2 if this doesn't work
+      // --- Use correct interface/entity ---
+      const uint8_t entity_id = 1; // Logitech Orbit PU
+      const uint8_t interface_number = 0;   // Video Control interface
       uint16_t wIndex = (entity_id << 8) | interface_number;
+      uint16_t wValue = CT_PANTILT_RELATIVE_CONTROL << 8; // high byte = control selector
       
       // LOG THE USB PARAMETERS
-      printk(KERN_INFO "ELE784 -> USB params: wValue=0x%04x wIndex=0x%04x (entity=%u iface=%u)\n",wValue, wIndex, entity_id, interface_number);
+      // printk(KERN_INFO "ELE784 -> USB params: wValue=0x%04x wIndex=0x%04x (entity=%u iface=%u)\n",wValue, wIndex, entity_id, interface_number);
+       printk(KERN_INFO "ELE784 -> USB params: wValue=0x%04x wIndex=0x%04x\n", wValue, wIndex);
   
       // Allocate kernel buffer (DMA-safe)
       uint8_t *data;
@@ -461,7 +473,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
                               wValue,
                               wIndex,
                               data,
-                              4, // size of data
+                              4, // size of datas
                               5000); // timeout in ms
       if (retval < 0) {
         printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE failed: %ld\n", retval);
@@ -473,6 +485,8 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       usb_put_dev(udev_local);  // CRITICAL: Decrement reference count
       break;
     }
+
+    
     case IOCTL_PANTILT_GET_INFO:
     {
       printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_GET_INFO\n");

@@ -39,25 +39,41 @@ int main() {
         perror("IOCTL_PANTILT_GET_CAPS failed");
     }
     sleep(1);
-
     // Test movement: pan right
     printf("Test mouvement: droite...\n");
     pantilt.delta_pan = 1;       // clockwise
-    pantilt.pan_speed = 1;       // required speed
-    pantilt.delta_tilt = 0;      // no tilt
-    pantilt.tilt_speed = 1;
+    pantilt.pan_speed = 1;       // speed
+    pantilt.delta_tilt = 0;      // NO tilt
+    pantilt.tilt_speed = 0;      // Speed MUST be 0 when direction is 0!
     ioctl(fd, IOCTL_PANTILT_RELATIVE, &pantilt);
     sleep(3);
+
+    // STOP pan
+    printf("Stop pan...\n");
+    pantilt.delta_pan = 0;       // stop
+    pantilt.pan_speed = 0;       // BOTH must be 0
+    pantilt.delta_tilt = 0;
+    pantilt.tilt_speed = 0;
+    ioctl(fd, IOCTL_PANTILT_RELATIVE, &pantilt);
+    sleep(1);
 
     // Test movement: tilt up
     printf("Test mouvement: haut...\n");
-    pantilt.delta_pan = 0;
-    pantilt.pan_speed = 1;
+    pantilt.delta_pan = 0;       // NO pan
+    pantilt.pan_speed = 0;       // Speed MUST be 0!
     pantilt.delta_tilt = 1;      // tilt up
-    pantilt.tilt_speed = 1;
+    pantilt.tilt_speed = 1;      // speed
     ioctl(fd, IOCTL_PANTILT_RELATIVE, &pantilt);
     sleep(3);
 
+    // STOP tilt
+    printf("Stop tilt...\n");
+    pantilt.delta_pan = 0;
+    pantilt.pan_speed = 0;
+    pantilt.delta_tilt = 0;
+    pantilt.tilt_speed = 0;
+    ioctl(fd, IOCTL_PANTILT_RELATIVE, &pantilt);
+    sleep(1);
     // Test 4: Reset final
     printf("Reset final...\n");
     ioctl(fd, IOCTL_PANTILT_RESET, 0);
