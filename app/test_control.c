@@ -119,7 +119,7 @@ void test_ioctl_set(int fd) {
     else
         printf("Commande envoyée avec succès.\n");
 
-    sleep(5);
+    sleep(2);
 }
 
 void test_ioctl_pantilt_relative(int fd, uint8_t *bufferPanTilt, size_t size) {
@@ -140,5 +140,5 @@ void test_ioctl_pantilt_relative(int fd, uint8_t *bufferPanTilt, size_t size) {
     else
         printf("Commande envoyée avec succès.\n");
 
-    sleep(5);
+    sleep(2);
 }
