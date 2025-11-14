@@ -1,0 +1,168 @@
+    Interface Descriptor:
+      bLength                 9
+      bDescriptorType         4
+      bInterfaceNumber        0
+      bAlternateSetting       0
+      bNumEndpoints           1
+      bInterfaceClass        14 Video
+      bInterfaceSubClass      1 Video Control
+      bInterfaceProtocol      0 
+      iInterface              0 
+      VideoControl Interface Descriptor:
+        bLength                13
+        bDescriptorType        36
+        bDescriptorSubtype      1 (HEADER)
+        bcdUVC               1.00
+        wTotalLength       0x00d6
+        dwClockFrequency      300.000000MHz
+        bInCollection           1
+        baInterfaceNr( 0)       1
+      VideoControl Interface Descriptor:
+        bLength                18
+        bDescriptorType        36
+        bDescriptorSubtype      2 (INPUT_TERMINAL)
+        bTerminalID             1
+        wTerminalType      0x0201 Camera Sensor
+        bAssocTerminal          0
+        iTerminal               0 
+        wObjectiveFocalLengthMin      0
+        wObjectiveFocalLengthMax      0
+        wOcularFocalLength            0
+        bControlSize                  3
+        bmControls           0x0002122e
+          Auto-Exposure Mode
+          Auto-Exposure Priority
+          Exposure Time (Absolute)
+          Focus (Absolute)
+          Zoom (Absolute)
+          PanTilt (Relative)
+          Focus, Auto
+      VideoControl Interface Descriptor:
+        bLength                11
+        bDescriptorType        36
+        bDescriptorSubtype      5 (PROCESSING_UNIT)
+      Warning: Descriptor too short
+        bUnitID                 3
+        bSourceID               1
+        wMaxMultiplier      16384
+        bControlSize            2
+        bmControls     0x0000175b
+          Brightness
+          Contrast
+          Saturation
+          Sharpness
+          White Balance Temperature
+          Backlight Compensation
+          Gain
+          Power Line Frequency
+          White Balance Temperature, Auto
+        iProcessing             0 
+        bmVideoStandards     0x1b
+          None
+          NTSC - 525/60
+          SECAM - 625/50
+          NTSC - 625/50
+      VideoControl Interface Descriptor:
+        bLength                27
+        bDescriptorType        36
+        bDescriptorSubtype      6 (EXTENSION_UNIT)
+        bUnitID                 6
+        guidExtensionCode         {23e49ed0-1178-4f31-ae52-d2fb8a8d3b48}
+        bNumControls           10
+        bNrInPins               1
+        baSourceID( 0)          3
+        bControlSize            2
+        bmControls( 0)       0xff
+        bmControls( 1)       0x03
+        iExtension              0 
+      VideoControl Interface Descriptor:
+        bLength                27
+        bDescriptorType        36
+        bDescriptorSubtype      6 (EXTENSION_UNIT)
+        bUnitID                 8
+        guidExtensionCode         {69678ee4-410f-40db-a850-7420d7d8240e}
+        bNumControls            7
+        bNrInPins               1
+        baSourceID( 0)          1
+        bControlSize            2
+        bmControls( 0)       0x3b
+        bmControls( 1)       0x03
+        iExtension              0 
+      VideoControl Interface Descriptor:
+        bLength                28
+        bDescriptorType        36
+        bDescriptorSubtype      6 (EXTENSION_UNIT)
+        bUnitID                 9
+        guidExtensionCode         {1f5d4ca9-de11-4487-840d-50933c8ec8d1}
+        bNumControls           16
+        bNrInPins               1
+        baSourceID( 0)          1
+        bControlSize            3
+        bmControls( 0)       0xf3
+        bmControls( 1)       0xff
+        bmControls( 2)       0x03
+        iExtension              0 
+      VideoControl Interface Descriptor:
+        bLength                27
+        bDescriptorType        36
+        bDescriptorSubtype      6 (EXTENSION_UNIT)
+        bUnitID                10
+        guidExtensionCode         {49e40215-f434-47fe-b158-0e885023e51b}
+        bNumControls            7
+        bNrInPins               1
+        baSourceID( 0)          1
+        bControlSize            2
+        bmControls( 0)       0xaa
+        bmControls( 1)       0x07
+        iExtension              0 
+      VideoControl Interface Descriptor:
+        bLength                27
+        bDescriptorType        36
+        bDescriptorSubtype      6 (EXTENSION_UNIT)
+        bUnitID                11
+        guidExtensionCode         {ffe52d21-8030-4e2c-82d9-f587d00540bd}
+        bNumControls            6
+        bNrInPins               1
+        baSourceID( 0)          1
+        bControlSize            2
+        bmControls( 0)       0x07
+        bmControls( 1)       0x83
+        iExtension              0 
+      VideoControl Interface Descriptor:
+        bLength                27
+        bDescriptorType        36
+        bDescriptorSubtype      6 (EXTENSION_UNIT)
+        bUnitID                12
+        guidExtensionCode         {a29e7641-de04-47e3-8b2b-f4341aff003b}
+        bNumControls           11
+        bNrInPins               1
+        baSourceID( 0)          3
+        bControlSize            2
+        bmControls( 0)       0x07
+        bmControls( 1)       0x7f
+        iExtension              0 
+      VideoControl Interface Descriptor:
+        bLength                 9
+        bDescriptorType        36
+        bDescriptorSubtype      3 (OUTPUT_TERMINAL)
+        bTerminalID             4
+        wTerminalType      0x0101 USB Streaming
+        bAssocTerminal          0
+        bSourceID               3
+        iTerminal               0 
+      Endpoint Descriptor:
+        bLength                 7
+        bDescriptorType         5
+        bEndpointAddress     0x83  EP 3 IN
+        bmAttributes            3
+          Transfer Type            Interrupt
+          Synch Type               None
+          Usage Type               Data
+        wMaxPacketSize     0x0040  1x 64 bytes
+        bInterval               8
+    Interface Descriptor:
+      bLength                 9
+      bDescriptorType         4
+      bInterfaceNumber        1
+      bAlternateSetting       0
+      bNumEndpoints           0
