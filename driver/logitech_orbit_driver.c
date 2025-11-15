@@ -30,7 +30,7 @@ int ele784_probe(struct usb_interface *interface, const struct usb_device_id *id
   struct orbit_driver *dev;
   struct usb_host_interface *iface_desc;
   int i;
-  int retval = -ENOMEM;
+  int retval = 0;
 
   printk(KERN_INFO "ELE784 -> Probe\n");
 
@@ -379,7 +379,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
     // Payload: commande reset propriétaire
     #define PANTILT_RESET_CMD     0x03
     #define PANTILT_RESET_VALUE   (0x02 << 8)  // Sélecteur propriétaire
-    #define PANTILT_RESET_INDEX   0x0900       // Interface vidéo + classe
+    #define PANTILT_RESET_INDEX   0x0B00       // Interface vidéo + classe
     #define PANTILT_RESET_TIMEOUT 400          // Timeout en ms
 
     buffer[0] = PANTILT_RESET_CMD;
@@ -391,6 +391,11 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
                              PANTILT_RESET_VALUE,
                              PANTILT_RESET_INDEX,
                              buffer, 1, PANTILT_RESET_TIMEOUT);
+
+    if (retval < 0)
+        printk(KERN_ERR "ELE784 -> Reset échoué: %d\n", retval);
+    else
+        printk(KERN_INFO "ELE784 -> Reset OK\n");
 
     kfree(buffer);
     break;

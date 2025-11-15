@@ -9,8 +9,11 @@
 struct usb_request req;
 struct usb_request pantilt;
 
+void test_ioctl_get(int fd);
 void test_ioctl_set(int fd);
 void test_ioctl_pantilt_relative(int fd, uint8_t *bufferPanTilt, size_t size);
+void test_ioctl_pantilt_reset(int fd);
+
 
 int main() {
     int fd = open("/dev/camera_control", O_RDWR);
@@ -19,9 +22,65 @@ int main() {
         perror("Erreur d’ouverture du périphérique");
         return -1;
     }
-    
+
     // Test 1: IOCTL_GET
+    test_ioctl_get(fd);
+
+    // Test 2: IOCTL_SET
+    //test_ioctl_set(fd);
+
+    // Test 4: IOCTL_PANTILT_RESET
+    test_ioctl_pantilt_reset(fd);
+
+    // Test 3: IOCTL_PANTILT_RELATIVE
     {
+        uint8_t bufferPanTilt[4] = {
+
+            // GET MIN : 0x80, 0xEE, 0x80, 0xF8 
+            // GET MAX : 0x80, 0x11, 0x80, 0x07 
+
+            0x80,   // bPanRelative
+            0x11,   // bPanSpeed
+            0x80,   // bTiltRelative
+            0x07    // bTiltSpeed
+        };
+
+        test_ioctl_pantilt_relative(fd, bufferPanTilt, 4);
+
+        bufferPanTilt[0] = 0x80;
+        bufferPanTilt[1] = 0x11;
+        bufferPanTilt[2] = 0x80;
+        bufferPanTilt[3] = 0x07;
+
+        test_ioctl_pantilt_reset(fd);
+        test_ioctl_pantilt_relative(fd, bufferPanTilt, 4);
+
+        bufferPanTilt[0] = 0x80;
+        bufferPanTilt[1] = 0x11;
+        bufferPanTilt[2] = 0x80;
+        bufferPanTilt[3] = 0xF8;
+
+        test_ioctl_pantilt_reset(fd);
+        test_ioctl_pantilt_relative(fd, bufferPanTilt, 4);
+        
+        bufferPanTilt[0] = 0x80;
+        bufferPanTilt[1] = 0xEE;
+        bufferPanTilt[2] = 0x80;
+        bufferPanTilt[3] = 0xF8;
+        
+        test_ioctl_pantilt_reset(fd);
+        test_ioctl_pantilt_relative(fd, bufferPanTilt, 4);
+    }
+
+    // Test 1: IOCTL_PANTILT_RESET
+    test_ioctl_pantilt_reset(fd);
+    
+    close(fd);
+
+    return 0;
+}
+
+void test_ioctl_get(int fd) {
     printf("Test IOCTL GET...\n");
 
     memset(&req, 0, sizeof(req));
@@ -36,56 +95,13 @@ int main() {
     req.data      = bufferGet;   
 
     ioctl(fd, IOCTL_GET, &req);
-    sleep(2);
+    
     printf("Données reçues :\n");
     for (int i = 0; i < sizeof(bufferGet); i++)
         printf("0x%02X ", bufferGet[i]);
     printf("\n");
-    }
 
-    // Test 2: IOCTL_SET
-    test_ioctl_set(fd);
-
-    // Test 3: IOCTL_PANTILT_RELATIVE
-    {
-        uint8_t bufferPanTilt[4] = {
-
-            // GET MIN : 0x80, 0xEE, 0x80, 0xF8 
-            // GET MAX : 0x80, 0x11, 0x80, 0x07 
-
-            0x80,   // bPanRelative
-            0xEE,   // bPanSpeed
-            0x80,   // bTiltRelative
-            0x07    // bTiltSpeed
-        };
-
-        test_ioctl_pantilt_relative(fd, bufferPanTilt, 4);
-
-        bufferPanTilt[0] = 0x80;
-        bufferPanTilt[1] = 0x11;
-        bufferPanTilt[2] = 0x80;
-        bufferPanTilt[3] = 0x07;
-
-        test_ioctl_pantilt_relative(fd, bufferPanTilt, 4);
-
-        bufferPanTilt[0] = 0x80;
-        bufferPanTilt[1] = 0x11;
-        bufferPanTilt[2] = 0x80;
-        bufferPanTilt[3] = 0xF8;
-
-        test_ioctl_pantilt_relative(fd, bufferPanTilt, 4);
-        
-        bufferPanTilt[0] = 0x80;
-        bufferPanTilt[1] = 0xEE;
-        bufferPanTilt[2] = 0x80;
-        bufferPanTilt[3] = 0xF8;
-        
-        test_ioctl_pantilt_relative(fd, bufferPanTilt, 4);
-    }
-
-    close(fd);
-
-    return 0;
+    sleep(3);
 }
 
 void test_ioctl_set(int fd) {
@@ -99,9 +115,9 @@ void test_ioctl_set(int fd) {
         // GET MAX : 0x80, 0x11, 0x80, 0x07 
 
         0x80,   // bPanRelative
-        0xEE,   // bPanSpeed
+        0x00,   // bPanSpeed
         0x80,   // bTiltRelative
-        0xF8    // bTiltSpeed
+        0x00    // bTiltSpeed
     };
 
     // === Remplissage de la requête ===
@@ -119,7 +135,7 @@ void test_ioctl_set(int fd) {
     else
         printf("Commande envoyée avec succès.\n");
 
-    sleep(2);
+    sleep(3);
 }
 
 void test_ioctl_pantilt_relative(int fd, uint8_t *bufferPanTilt, size_t size) {
@@ -140,5 +156,18 @@ void test_ioctl_pantilt_relative(int fd, uint8_t *bufferPanTilt, size_t size) {
     else
         printf("Commande envoyée avec succès.\n");
 
-    sleep(2);
+    sleep(3);
+}
+
+void test_ioctl_pantilt_reset(int fd) {
+    printf("Test IOCTL RESET...\n");
+
+    int ret = ioctl(fd, IOCTL_PANTILT_RESET);
+
+    if (ret < 0)
+        perror("Erreur IOCTL_PANTILT_RESET");
+    else
+        printf("Commande de reset envoyée avec succès.\n");
+
+    sleep(3);
 }
