@@ -177,6 +177,11 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
                                 USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE, 
                                 value, index,
                                 data, data_size, timeout);
+
+      if (retval < 0)
+        printk(KERN_ERR "ELE784 -> Get échoué: %d\n", retval);
+      else
+          printk(KERN_INFO "ELE784 -> Get OK\n");
       
       // Renvoi de la réponse à l'usager
       if (retval >= 0 && data_size > 0) {
@@ -239,6 +244,43 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
         timeout   = 5000
     Les données récoltées grâce à cette requête seront ensuite utilisées pour configurer les requêtes Urb (voir ci-dessous).
     *******************************************************************************/
+
+    copy_from_user(&user_request, (struct usb_request *)arg, sizeof(struct usb_request));
+
+    // Extraction des paramètres
+    data_size = user_request.data_size;
+    request   = user_request.request;
+    value     = (user_request.value) << 8;
+    index     = (user_request.index) << 8 | interface->cur_altsetting->desc.bInterfaceNumber;
+    timeout   = user_request.timeout;
+    data      = NULL;
+
+    // EFFACE DATA A LA FIN DU CASE (free) -------------------------------------------------------
+    data = kmalloc(data_size, GFP_KERNEL);
+    if (!data) {
+        retval = -ENOMEM;
+        break;
+    }
+    // EFFACE DATA A LA FIN DU CASE -------------------------------------------------------
+
+    // Envoi de la requête de contrôle USB
+    retval = usb_control_msg(udev,
+                              usb_rcvctrlpipe(udev, 0x00),          
+                              request,                                 
+                              USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE, 
+                              value, index,
+                              data, data_size, timeout);
+    
+    if (retval < 0)
+        printk(KERN_ERR "ELE784 -> Stream On échoué: %d\n", retval);
+    else
+        printk(KERN_INFO "ELE784 -> Stream On OK\n");
+
+    // Renvoi de la réponse à l'usager
+    if (retval >= 0 && data_size > 0) {
+      copy_to_user((uint8_t __user *) user_request.data, data, data_size);        
+    }
+
     {	uint32_t bandwidth, psize, size, npackets, urb_size;
     struct usb_host_endpoint *ep = NULL;
     struct usb_host_interface *alts;

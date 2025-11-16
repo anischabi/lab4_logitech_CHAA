@@ -13,6 +13,7 @@ void test_ioctl_get(int fd);
 void test_ioctl_set(int fd);
 void test_ioctl_pantilt_relative(int fd, uint8_t *bufferPanTilt, size_t size);
 void test_ioctl_pantilt_reset(int fd);
+void test_ioctl_streamon(int fd);
 
 
 int main() {
@@ -23,17 +24,17 @@ int main() {
         return -1;
     }
 
+    // Test 4: IOCTL_PANTILT_RESET
+    test_ioctl_pantilt_reset(fd);
+
     // Test 1: IOCTL_GET
-    test_ioctl_get(fd);
+    //test_ioctl_get(fd);
 
     // Test 2: IOCTL_SET
     //test_ioctl_set(fd);
 
-    // Test 4: IOCTL_PANTILT_RESET
-    test_ioctl_pantilt_reset(fd);
-
     // Test 3: IOCTL_PANTILT_RELATIVE
-    {
+    {/*
         uint8_t bufferPanTilt[4] = {
 
             // GET MIN : 0x80, 0xEE, 0x80, 0xF8 
@@ -70,10 +71,13 @@ int main() {
         
         test_ioctl_pantilt_reset(fd);
         test_ioctl_pantilt_relative(fd, bufferPanTilt, 4);
-    }
+    */}
 
     // Test 1: IOCTL_PANTILT_RESET
-    test_ioctl_pantilt_reset(fd);
+    //test_ioctl_pantilt_reset(fd);
+
+    // Test : IOCTL_STREAMON
+    test_ioctl_streamon(fd);
     
     close(fd);
 
@@ -168,6 +172,30 @@ void test_ioctl_pantilt_reset(int fd) {
         perror("Erreur IOCTL_PANTILT_RESET");
     else
         printf("Commande de reset envoyée avec succès.\n");
+
+    sleep(3);
+}
+
+void test_ioctl_streamon(int fd) {
+    printf("Test IOCTL STREAMON...\n");
+
+    memset(&req, 0, sizeof(req));
+
+    uint8_t bufferStreamOn[26] = {0};
+    
+    req.request   = 0x81; 
+    req.value     = 0x0100;  // 0x0100 fonctionne pour streamon
+    req.index     = 0x0B; 
+    req.timeout   = 5000;
+    req.data_size = sizeof(bufferStreamOn);       
+    req.data      = bufferStreamOn;   
+
+    ioctl(fd, IOCTL_STREAMON, &req);
+    
+    printf("Données reçues :\n");
+    for (int i = 0; i < sizeof(bufferStreamOn); i++)
+        printf("0x%02X ", bufferStreamOn[i]);
+    printf("\n");
 
     sleep(3);
 }
