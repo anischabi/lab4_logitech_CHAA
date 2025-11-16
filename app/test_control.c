@@ -14,6 +14,7 @@ void test_ioctl_set(int fd);
 void test_ioctl_pantilt_relative(int fd, uint8_t *bufferPanTilt, size_t size);
 void test_ioctl_pantilt_reset(int fd);
 void test_ioctl_streamon(int fd);
+void test_ioctl_streamoff(int fd);
 
 
 int main() {
@@ -75,11 +76,16 @@ int main() {
 
     // Test 1: IOCTL_PANTILT_RESET
     //test_ioctl_pantilt_reset(fd);
+    close(fd);
+
+    // Changement d'interface pour le streaming
+    fd = open("/dev/camera_stream", O_RDWR);
 
     // Test : IOCTL_STREAMON
     test_ioctl_streamon(fd);
-    
-    close(fd);
+
+    // Test : IOCTL_STREAMOFF
+    test_ioctl_streamoff(fd);
 
     return 0;
 }
@@ -179,23 +185,78 @@ void test_ioctl_pantilt_reset(int fd) {
 void test_ioctl_streamon(int fd) {
     printf("Test IOCTL STREAMON...\n");
 
+    /*GET_DEF (configuration par defaut)*/
     memset(&req, 0, sizeof(req));
-
     uint8_t bufferStreamOn[26] = {0};
     
-    req.request   = 0x81; 
-    req.value     = 0x0100;  // 0x0100 fonctionne pour streamon
-    req.index     = 0x0B; 
+    req.request   = 0x87;    // GET_DEF
+    req.value     = 0x01;    // VS_PROBE_CONTROL
+    req.index     = 0x01;    // Interface 1
     req.timeout   = 5000;
     req.data_size = sizeof(bufferStreamOn);       
     req.data      = bufferStreamOn;   
 
-    ioctl(fd, IOCTL_STREAMON, &req);
+    ioctl(fd, IOCTL_GET, &req);
+
+    /*SET_CUR (set configuration)*/
+    req.request    = 0x01;            // SET_CUR
+    req.value      = 0x01;            // VS_PROBE_CONTROL
+    req.index      = 0x01;            // Interface 1
+    req.timeout    = 5000;
+    req.data_size  = sizeof(bufferStreamOn);
+    req.data       = bufferStreamOn;
+
+    ioctl(fd, IOCTL_SET, &req);  // Aucun argument à passer
     
-    printf("Données reçues :\n");
+    /*GET_CUR (configuration has changed?)*/
+    req.request    = 0x81;            // GET_CUR
+    req.value      = 0x01;            // VS_PROBE_CONTROL
+    req.index      = 0x01;            // Interface 1
+    req.timeout    = 5000;
+    req.data_size  = sizeof(bufferStreamOn);
+    req.data       = bufferStreamOn;
+
+    ioctl(fd, IOCTL_GET, &req);  // Aucun argument à passer
+
+    /*SET_CUR (commit configuration)*/
+    req.request    = 0x01;            // SET_CUR
+    req.value      = 0x01;            // VS_PROBE_CONTROL
+    req.index      = 0x01;            // Interface 1
+    req.timeout    = 5000;
+    req.data_size  = sizeof(bufferStreamOn);
+    req.data       = bufferStreamOn;
+
+    ioctl(fd, IOCTL_SET, &req);  // Aucun argument à passer
+
+    /*GET_CUR (configuration has changed?)*/
+    req.request    = 0x81;            // GET_CUR
+    req.value      = 0x01;            // VS_PROBE_CONTROL
+    req.index      = 0x01;            // Interface 1
+    req.timeout    = 5000;
+    req.data_size  = sizeof(bufferStreamOn);
+    req.data       = bufferStreamOn;
+
+    ioctl(fd, IOCTL_GET, &req);
+
+    printf("Configuration du stream :\n");
     for (int i = 0; i < sizeof(bufferStreamOn); i++)
         printf("0x%02X ", bufferStreamOn[i]);
     printf("\n");
+
+    ioctl(fd, IOCTL_STREAMON, &req); 
+
+    sleep(3);
+}
+
+void test_ioctl_streamoff(int fd) {
+    printf("Test IOCTL STREAMOFF...\n");
+
+    int ret = ioctl(fd, IOCTL_STREAMOFF);
+
+    if (ret < 0)
+        perror("Erreur IOCTL_STREAMOFF");
+    else
+        printf("Commande de stream off envoyée avec succès.\n");
 
     sleep(3);
 }

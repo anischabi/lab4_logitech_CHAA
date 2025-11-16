@@ -151,13 +151,17 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       {
       printk(KERN_INFO "ELE784 -> IOCTL_GET\n");
 
+      // Numero d'interface
+      int interfaceNum = interface->cur_altsetting->desc.bInterfaceNumber;
+      printk(KERN_ERR "Current Interface: %d\n", interfaceNum);
+
       copy_from_user(&user_request, (struct usb_request *)arg, sizeof(struct usb_request));
 
       // Extraction des paramètres
       data_size = user_request.data_size;
       request   = user_request.request;
       value     = (user_request.value) << 8;
-      index     = (user_request.index) << 8 | interface->cur_altsetting->desc.bInterfaceNumber;
+      index     = (user_request.index);// << 8 | interface->cur_altsetting->desc.bInterfaceNumber;
       timeout   = user_request.timeout;
       data      = NULL;
       
@@ -200,12 +204,16 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
 
     printk(KERN_INFO "ELE784 -> IOCTL_SET\n");
 
+    // Numero d'interface
+    int interfaceNum = interface->cur_altsetting->desc.bInterfaceNumber;
+    printk(KERN_ERR "Current Interface: %d\n", interfaceNum);
+
     copy_from_user(&user_request, (struct usb_request *)arg, sizeof(struct usb_request));
 
     data_size = user_request.data_size;
     request   = user_request.request;
     value     = (user_request.value) << 8;
-    index     = (user_request.index) << 8 | interface->cur_altsetting->desc.bInterfaceNumber;
+    index     = (user_request.index);// << 8 | interface->cur_altsetting->desc.bInterfaceNumber;
     timeout   = user_request.timeout;
     data      = NULL;
 
@@ -235,6 +243,11 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
     case IOCTL_STREAMON:
     {
     printk(KERN_INFO "ELE784 -> IOCTL_STREAMON\n");
+
+    // Numero d'interface
+    int interfaceNum = interface->cur_altsetting->desc.bInterfaceNumber;
+    printk(KERN_ERR "Current Interface: %d\n", interfaceNum);
+
     /*******************************************************************************
     Ici, il faut préparer et transmettre une requête similaire à un IOCTL_GET avec les caractéristiques suivantes :
         data_size = 26
@@ -251,17 +264,16 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
     data_size = user_request.data_size;
     request   = user_request.request;
     value     = (user_request.value) << 8;
-    index     = (user_request.index) << 8 | interface->cur_altsetting->desc.bInterfaceNumber;
+    index     = (user_request.index); //<< 8 | interface->cur_altsetting->desc.bInterfaceNumber;
     timeout   = user_request.timeout;
     data      = NULL;
 
-    // EFFACE DATA A LA FIN DU CASE (free) -------------------------------------------------------
+    printk("DEBUG: data_size = %d\n", data_size);
     data = kmalloc(data_size, GFP_KERNEL);
     if (!data) {
         retval = -ENOMEM;
         break;
     }
-    // EFFACE DATA A LA FIN DU CASE -------------------------------------------------------
 
     // Envoi de la requête de contrôle USB
     retval = usb_control_msg(udev,
@@ -270,6 +282,14 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
                               USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE, 
                               value, index,
                               data, data_size, timeout);
+    
+    printk("DEBUG: request=0x%02x bmRequestType=0x%02x wValue=0x%04x wIndex=%d len=%d\n",
+    request,
+    USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+    value,
+    index,
+    data_size);
+
     
     if (retval < 0)
         printk(KERN_ERR "ELE784 -> Stream On échoué: %d\n", retval);
@@ -349,11 +369,38 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
           Suggestion :	Attacher la structure (driver->frame_buf) au champ "context" de la structure du Urb.
           *******************************************************************************/
 
+          // initialisation de l'Urb'
+          //struct urb *urb = driver->isoc_in_urb[i];
+          driver->isoc_in_urb[i]->dev = udev;
+          driver->isoc_in_urb[i]->context = &(driver->frame_buf);
+          driver->isoc_in_urb[i]->pipe = usb_rcvisocpipe(udev, ep->desc.bEndpointAddress);
+          driver->isoc_in_urb[i]->transfer_flags = URB_ISO_ASAP | URB_NO_TRANSFER_DMA_MAP;
+          driver->isoc_in_urb[i]->interval = ep->desc.bInterval;              // De endpoint descriptor
+          driver->isoc_in_urb[i]->complete = complete_callback;
+          driver->isoc_in_urb[i]->number_of_packets = npackets;
+          //urb->transfer_buffer = buf;
+          driver->isoc_in_urb[i]->transfer_buffer_length = urb_size;
+
+          for (j = 0; j < npackets; j++) {
+            driver->isoc_in_urb[i]->iso_frame_desc[j].offset = j * psize;
+            driver->isoc_in_urb[i]->iso_frame_desc[j].length = psize;
+          }
+
       }
       // Et on lance tous les Urbs créés. 
       /*******************************************************************************
       Ici, il s'agit de soumettre tous les Urbs créés ci-dessus.
       *******************************************************************************/
+      for (i = 0; i < URB_COUNT; i++) {
+        int ret = usb_submit_urb(driver->isoc_in_urb[i], GFP_KERNEL);
+        if (ret < 0) {
+            printk(KERN_ERR "Échec soumission Urb: %d\n", ret);
+            usb_free_urb(driver->isoc_in_urb[i]);
+            return ret;
+        } else {
+            printk(KERN_WARNING "Soumission Urbc reussie\n");
+        }
+      }
     }
 
     if (data) {
@@ -366,15 +413,56 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
     case IOCTL_STREAMOFF:
     {
     printk(KERN_INFO "ELE784 -> IOCTL_STREAMOFF\n");
+
+    // Numero d'interface
+    int interfaceNum = interface->cur_altsetting->desc.bInterfaceNumber;
+    printk(KERN_ERR "Current Interface: %d\n", interfaceNum);
+
+    int ret = usb_set_interface(udev, interfaceNum, 10);
+    if (ret < 0) {
+        printk(KERN_ERR "usb_set_interface failed: %d\n", ret);
+    }else {
+        printk(KERN_INFO "usb_set_interface to altsetting %d successful\n", 10);
+    }
     /*******************************************************************************
     Ici, il faut "tuer" et éliminer tous les Urbs qui sont actifs et arrêter le Streaming de la caméra.
     Pour arrêter le Streaming de la caméra, il suffit de rendre "courant" l'interface alternative 0.
     *******************************************************************************/
+   for (i = 0; i < URB_COUNT; i++) {
+      if (driver->isoc_in_urb[i] != NULL) {
+          usb_kill_urb(driver->isoc_in_urb[i]);
+
+          usb_free_coherent(udev,
+                            driver->isoc_in_urb[i]->transfer_buffer_length,
+                            driver->isoc_in_urb[i]->transfer_buffer,
+                            driver->isoc_in_urb[i]->transfer_dma);
+
+                            
+          usb_free_urb(driver->isoc_in_urb[i]);
+
+          driver->isoc_in_urb[i] = NULL;
+      }
+    }
+
+    if (driver->frame_buf.Data != NULL) {
+        kfree(driver->frame_buf.Data);
+        driver->frame_buf.Data = NULL;
+    }
+
+    usb_set_interface(udev, interface->cur_altsetting->desc.bInterfaceNumber, 0);
+
+    reinit_completion(&(driver->frame_buf.new_frame_start));
+    reinit_completion(&(driver->frame_buf.urb_completion));
+
     break;
     }
     case IOCTL_PANTILT_RELATIVE:
     {
       printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RELATIVE\n");
+
+      // Numero d'interface
+      int interfaceNum = interface->cur_altsetting->desc.bInterfaceNumber;
+      printk(KERN_ERR "Current Interface: %d\n", interfaceNum);
 
       copy_from_user(&user_request, (struct usb_request *)arg, sizeof(struct usb_request));
 
@@ -411,6 +499,10 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
     case IOCTL_PANTILT_RESET:
     {
     printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RESET\n");
+
+    // Numero d'interface
+    int interfaceNum = interface->cur_altsetting->desc.bInterfaceNumber;
+    printk(KERN_ERR "Current Interface: %d\n", interfaceNum);
 
     // Commande propriétaire Logitech pour recentrer la caméra
     // Allouer dynamiquement le buffer (obligation USB)
