@@ -1,6 +1,7 @@
 #include "logitech_orbit_driver.h"
 
 
+
 // Event when the device is opened (Called when user-space opens /dev/camera_control or c.)
 int ele784_open(struct inode *inode, struct file *file) {
   struct usb_interface *interface;
@@ -35,41 +36,24 @@ int ele784_probe(struct usb_interface *interface, const struct usb_device_id *id
   int retval;
 
   printk(KERN_INFO "ELE784 -> Probe: device connected\n");
-
-
-
-  /* Allocate driver struct */
   dev = kzalloc(sizeof(*dev), GFP_KERNEL);
   if (!dev) {
-    //dev_err() attaches the error to the particular USB device (interface->dev),
-    // so the kernel log clearly shows which device the message came from.
     dev_err(&interface->dev, "ELE784 -> Probe : Out of memory\n");
     return -ENOMEM;
   }
 
   /* Save interface + device pointer */
-  // - interface_to_usbdev(interface) = gets a pointer to the struct usb_device for this USB interface : Every interface belongs to a USB device (your webcam), this fetches it.
-  // - usb_get_dev(dev) = increments the reference count of the USB device : This ensures the device is not freed while your driver is using it.
-  // - dev->device = stores the pointer in your orbit_driver structure for later use (e.g., sending control messages, URBs, etc.)
   dev->device = usb_get_dev(interface_to_usbdev(interface));
-  // Stores a pointer to the usb_interface structure for this device.
-  // Needed to access interface-specific data, endpoints, or descriptors later.
   dev->interface = interface;
 
   // Initialize URB pointers to NULL.
-  // - isoc_in_urb[] will later hold the isochronous IN URBs for video streaming.
-  // - Initializing to NULL ensures the driver knows they are not allocated yet.
-  // - Prevents accidental use of uninitialized pointers in error handling or cleanup.
   for (i = 0; i < URB_COUNT; ++i)
     dev->isoc_in_urb[i] = NULL;
 
   // Get interface descriptor : Determine what kind of interface this is so we know whether to register camera_control or camera_stream.
-  // - cur_altsetting = current alternate setting of the interface : Every USB interface can have alternate settings (different endpoints, bandwidth, etc.)
-  // -  iface_desc is of type struct usb_host_interface * : It contains iface_desc->desc, which has the class, subclass, protocol, and endpoint info.
   iface_desc = interface->cur_altsetting;
 
   printk(KERN_INFO "ELE784 -> Probe interface number: %d\n", iface_desc->desc.bInterfaceNumber);
-  // Print interface class info
   printk(KERN_INFO "ELE784 -> Interface class: 0x%02x, subclass: 0x%02x, protocol: 0x%02x\n",
          iface_desc->desc.bInterfaceClass,
          iface_desc->desc.bInterfaceSubClass,
@@ -199,11 +183,14 @@ void ele784_disconnect(struct usb_interface *intf) {
    * - Checks whether any isochronous URBs were allocated. 
    * - If the user hasn’t started streaming yet, we don’t need to touch URBs or buffers.
    */
-  if (dev->isoc_in_urb[0] != NULL) {
+  if (dev->isoc_in_urb[0] != NULL) 
+  {
     //Loop over all URBs in the driver.
-    for (i = 0; i < URB_COUNT; i++) {
+    for (i = 0; i < URB_COUNT; i++) 
+    {
       //dev->isoc_in_urb[i] may be NULL if that URB was never allocated. (Only free URBs that exist.)
-      if (dev->isoc_in_urb[i]) {
+      if (dev->isoc_in_urb[i]) 
+      {
         /* 2.B.1. Stop URB if running.
          * - Cancels the URB if it’s still pending (being processed by the USB core).
          * - Prevents the kernel from accessing freed memory.
@@ -215,7 +202,8 @@ void ele784_disconnect(struct usb_interface *intf) {
          * - dev->frame_buf.MaxLength is the size of the buffer
          * - Avoid memory leaks and ensure proper cleanup of USB DMA resources.
          */
-        if (dev->isoc_in_urb[i]->transfer_buffer){
+        if (dev->isoc_in_urb[i]->transfer_buffer)
+        {
           usb_free_coherent(dev->device,
                             dev->frame_buf.MaxLength,
                             dev->isoc_in_urb[i]->transfer_buffer,
@@ -255,36 +243,50 @@ void ele784_disconnect(struct usb_interface *intf) {
   printk(KERN_INFO "ELE784 -> Disconnect complete\n");
 }
 
-
+// IOCTL handler for camera control commands
 long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
+
+  // Retrieve the driver data from file->private_data
   struct orbit_driver  *driver = (struct orbit_driver *) file->private_data;
+  
+  // Validate the driver data
   if (!driver) {
+    // If private_data is NULL, the device is disconnected or not properly opened
     printk(KERN_ERR "ELE784 -> IOCTL called on disconnected device (private_data=NULL)\n");
     return -ENODEV;
   }else{
+    // Log the received IOCTL command for debugging
     printk(KERN_INFO "ELE784 -> IOCTL called with cmd=0x%08x\n", cmd);
   }
 
+  // Further validate the interface pointer
   if (!driver->interface) {
+    // If interface is NULL, the device has been disconnected
     printk(KERN_ERR "ELE784 -> IOCTL called on disconnected device (interface=NULL)\n");
     return -ENODEV;
   }else{
+    // Log that the interface is valid
     printk(KERN_INFO "ELE784 -> IOCTL device interface is valid\n");
   }
 
+  //device and interface pointers
   struct usb_interface *interface = driver->interface;
-  struct usb_device    *udev = interface_to_usbdev(interface);
+  // Get the usb_device structure for sending control messages
+  struct usb_device *udev = interface_to_usbdev(interface);
 
-  struct usb_request user_request;
-  uint8_t  request, data_size;
-  uint16_t value, index, timeout;
-  uint8_t  *data;
+  // Local variables for USB request parameters
+  struct usb_request user_request; // structure to hold user request
+  uint8_t  request, data_size; // size of data buffer
+  uint16_t value, index, timeout; // USB request parameters
+  uint8_t  *data; // data buffer pointer
 
-  int i,j;
-  long retval=0;
+  int i,j; // loop counters
+  long retval=0; // return value
 
+  // Handle different IOCTL commands
   switch(cmd) {
 
+    // Handle IOCTL_GET command 
     case IOCTL_GET:
       printk(KERN_INFO "ELE784 -> IOCTL_GET\n");
       // 1. Copy request from user space
@@ -292,40 +294,39 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       // - copy_from_user() safely copies it into kernel memory.
       // - This avoids directly dereferencing user-space pointers, which would crash the kernel.
       if (copy_from_user(&user_request, (struct usb_request __user *)arg, sizeof(struct usb_request))) {
+        // Error handling if copy fails
         printk(KERN_ERR "ELE784 -> IOCTL_GET : copy_from_user (request) failed\n");
         retval = -EFAULT;
         break;
       }
-      // 2. Extract parameters (same as IOCTL_SET)
-      data_size = user_request.data_size;       // Number of bytes we want to read from the device
-      request   = user_request.request;         // USB request code (e.g., GET_CUR)
-      value     = (user_request.value) << 8;   // Some request-specific value
-      index     = (user_request.index) << 8 | interface->cur_altsetting->desc.bInterfaceNumber; // Target interface
-      timeout   = user_request.timeout;        // Timeout in milliseconds
-      data      = NULL;                         // Pointer for buffer to receive data
+      /* Allocate kernel buffer for incoming data */
+      data_size = user_request.data_size;
+      data = NULL;                   // Pointer for buffer to receive data
       // 3. Allocate buffer if data_size > 0
       if (data_size > 0) {
         // allocate memory in kernel space
         data = kmalloc(data_size, GFP_KERNEL);
         // check for allocation failure
         if (!data) {
+          // log error and set return value
           printk(KERN_ERR "ELE784 -> IOCTL_GET : kmalloc failed\n");
           retval = -ENOMEM;
           break;
         }
       }
-      // 4) Send USB control message (IN direction, device -> host)
-      // - usb_rcvctrlpipe() selects endpoint 0 for receiving control messages
-      // - USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE indicates a class-specific IN request
-      retval = usb_control_msg(udev,
-                              usb_rcvctrlpipe(udev, 0x00),
-                              request,
-                              USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
-                              value,
-                              index,
-                              data,
-                              data_size,
-                              timeout);
+
+      /* Perform the USB GET (device → host) */
+      retval = usb_control_msg(
+          udev,
+          usb_rcvctrlpipe(udev, 0),
+          user_request.request,   // GET_CUR, GET_MIN, GET_MAX, ...
+          USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+          user_request.value,     // full 16-bit wValue already provided by user
+          user_request.index,     // full 16-bit wIndex (interface) already provided
+          data,
+          data_size,
+          user_request.timeout
+      );
 
       // 5) Copy the received data back to user space
       // - Only copy if usb_control_msg succeeded and there was data to receive
@@ -342,278 +343,60 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       break; //  Required to exit the switch
 
     case IOCTL_SET:
-      printk(KERN_INFO "ELE784 -> IOCTL_SET\n");
-      //Copy the request from user space
-      // - arg is a pointer from user space that contains the request structure (usb_request).
-      // - copy_from_user() safely copies it into kernel memory.
-      // - This avoids directly dereferencing user-space pointers, which would crash the kernel.
-      if (copy_from_user(&user_request, (struct usb_request __user *)arg,sizeof(struct usb_request))) {
-        printk(KERN_ERR "ELE784 -> IOCTL_SET : copy_from_user (request) failed\n");
-        retval = -EFAULT;
-        break;
-      } 
-      //Extract parameters
-      data_size = user_request.data_size;    // number of bytes that will be sent.
-      request   = user_request.request;      // the USB request code (e.g., SET_CUR, GET_CUR).
-      value     = (user_request.value) << 8; // some request-specific parameter (shifted left by 8 bits as per USB spec).
-      index     = (user_request.index) << 8 | interface->cur_altsetting->desc.bInterfaceNumber; //target interface + other info (here combining interface number with user_request.index).
-      timeout   = user_request.timeout; // time to wait for USB response.
-      data      = NULL; // pointer for the buffer you will send; initialized as NULL.
-      
-      // Allocate buffer and copy user data
-      // - If there is data to send, allocate kernel memory of data_size bytes.
-      // - Copy the data from user space into this kernel buffer.
-      // - GFP_KERNEL is the flag for normal kernel memory allocation.
-      if (data_size > 0) {
-        data = kmalloc(data_size, GFP_KERNEL);
-        if (!data) {
-          printk(KERN_ERR "ELE784 -> IOCTL_SET : kmalloc failed\n");
-          retval = -ENOMEM;
-          break;
+        printk(KERN_INFO "ELE784 -> IOCTL_SET\n");
+
+        /* 1. Copy the request struct from user space */
+        if (copy_from_user(&user_request,
+                          (struct usb_request __user *)arg,
+                          sizeof(struct usb_request))) {
+            printk(KERN_ERR "ELE784 -> IOCTL_SET: copy_from_user failed\n");
+            retval = -EFAULT;
+            break;
         }
-        if (copy_from_user(data, user_request.data, data_size)) {
-          printk(KERN_ERR "ELE784 -> IOCTL_SET : copy_from_user (data) failed\n");
-          kfree(data);    // cleanup!!
-          data = NULL;
-          retval = -EFAULT;
-          break;
+
+        /* 2. Allocate payload buffer if needed */
+        data_size = user_request.data_size;
+        data = NULL;
+
+        if (data_size > 0) {
+            data = kmalloc(data_size, GFP_KERNEL);
+            if (!data) {
+                retval = -ENOMEM;
+                break;
+            }
+
+            /* Copy payload (host → device) */
+            if (copy_from_user(data,
+                              (uint8_t __user *)user_request.data,
+                              data_size)) {
+                printk(KERN_ERR "ELE784 -> IOCTL_SET: copy_from_user(data) failed\n");
+                kfree(data);
+                retval = -EFAULT;
+                break;
+            }
         }
-      }
-      // Send the USB control message
-      //This function actually sends the command to the camera and returns the number of bytes sent or a negative error code.
-      retval = usb_control_msg(udev, //pointer to the USB device.
-                              usb_sndctrlpipe(udev, 0x00), // chooses endpoint 0 for sending control messages.
-                              request, //the request code got earlier.
-                              USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE, 
-                              //USB_DIR_OUT : this is an OUT message (host → device). 
-                              //USB_TYPE_CLASS | USB_RECIP_INTERFACE : indicates this is a class-specific request for an interface.
-                              value, index, data, data_size, timeout);
-                              // value, index : request parameters for USB protocol.
-                              // data, data_size : the buffer and its size to send.
-                              // timeout : milliseconds to wait for the transfer
-      // Once the message is sent, the kernel memory is no longer needed, so we free it to avoid memory leaks.
-      kfree(data);
-      data = NULL;
-      break;
 
+        /* 3. Perform the USB SET (OUT direction — host → device) */
+        retval = usb_control_msg(
+            udev,
+            usb_sndctrlpipe(udev, 0),
+            user_request.request,   // Typically SET_CUR = 1
+            USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+            user_request.value,     // full 16-bit wValue
+            user_request.index,     // full 16-bit wIndex
+            data,
+            data_size,
+            user_request.timeout
+        );
+        /* 4. Free payload buffer */
+        if (data) {
+            kfree(data);
+            data = NULL;
+        }
 
-    case IOCTL_PANTILT_RELATIVE:
-    {
-      printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RELATIVE 1\n");
-      struct pantilt_relative {
-        int8_t delta_pan;
-        uint8_t pan_speed;
-        int8_t delta_tilt;
-        uint8_t tilt_speed;
-      }pt;
-          
-      // 2.Copy the pan/tilt values from user space
-      if (copy_from_user(&pt, (struct pantilt_relative __user *)arg, sizeof(struct pantilt_relative))) {
-        printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE : copy_from_user failed\n");
-        retval = -EFAULT;
         break;
-      }
-      // 3.MORE DETAILED LOGGING
-      printk(KERN_INFO "ELE784 -> Pan/Tilt from user: pan=%d (speed=%u) tilt=%d (speed=%u)\n",
-            pt.delta_pan, pt.pan_speed, pt.delta_tilt, pt.tilt_speed);
+
   
-      /* 4) Snap local pointers and get a stable udev ref */
-      /* Get stable device references */
-      struct usb_interface *iface = driver->interface;
-      if (!iface) {
-          printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE : interface is NULL\n");
-          retval = -ENODEV;
-          break;
-      }
-      struct usb_device *udev_local= interface_to_usbdev(iface);
-      if (!udev_local) {
-        printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE : interface_to_usbdev returned NULL\n");
-        retval = -ENODEV;
-        break;
-      }
-      /* increment refcount so udev isn't freed while we use it */
-      usb_get_dev(udev_local);
-      
-      /* 6) build wValue/wIndex (UVC: high byte = control selector, wIndex: high byte = interface) */
-      // --- Use correct interface/entity ---
-      const uint8_t entity_id = 1; // Logitech Orbit PU
-      const uint8_t interface_number = 0;   // Video Control interface
-      uint16_t wIndex = (entity_id << 8) | interface_number;
-      uint16_t wValue = CT_PANTILT_RELATIVE_CONTROL << 8; // high byte = control selector
-      
-      // LOG THE USB PARAMETERS
-      // printk(KERN_INFO "ELE784 -> USB params: wValue=0x%04x wIndex=0x%04x (entity=%u iface=%u)\n",wValue, wIndex, entity_id, interface_number);
-       printk(KERN_INFO "ELE784 -> USB params: wValue=0x%04x wIndex=0x%04x\n", wValue, wIndex);
-  
-      // Allocate kernel buffer (DMA-safe)
-      uint8_t *data;
-      data = kmalloc(4, GFP_KERNEL);
-      if (!data) {
-        retval = -ENOMEM;
-        break;
-      }
-      /* Pack data according to UVC spec:
-      * Byte 0: Pan direction (signed int8)
-      * Byte 1: Pan speed (uint8)
-      * Byte 2: Tilt direction (signed int8)
-      * Byte 3: Tilt speed (uint8)
-      */
-      data[0] = pt.delta_pan;
-      data[1] = pt.pan_speed;
-      data[2] = pt.delta_tilt;
-      data[3] = pt.tilt_speed;
-      // LOG WHAT WE'RE SENDING
-      printk(KERN_INFO "ELE784 -> Sending bytes: [0x%02x 0x%02x 0x%02x 0x%02x]\n",data[0], data[1], data[2], data[3]);
-
-      // Send the control message
-      retval = usb_control_msg(udev_local,
-                              usb_sndctrlpipe(udev_local, 0x00),
-                              SET_CUR, // 0x01, set current value
-                              USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
-                              wValue,
-                              wIndex,
-                              data,
-                              4, // size of datas
-                              5000); // timeout in ms
-      if (retval < 0) {
-        printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE failed: %ld\n", retval);
-      } else {
-        printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RELATIVE succeeded: %ld bytes sent\n", retval);
-      }
-      kfree(data); // free DMA-safe buffer
-      data = NULL;
-      usb_put_dev(udev_local);  // CRITICAL: Decrement reference count
-      break;
-    }
-
-    
-    case IOCTL_PANTILT_GET_INFO:
-    {
-      printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_GET_INFO\n");
-      
-      uint8_t *info_data = kmalloc(1, GFP_KERNEL);
-      if (!info_data) {
-        retval = -ENOMEM;
-        break;
-      }
-      
-      uint16_t wValue = CT_PANTILT_RELATIVE_CONTROL << 8;
-      uint16_t wIndex = 0x0100;
-      
-      retval = usb_control_msg(udev, 
-                              usb_rcvctrlpipe(udev, 0x00),
-                              GET_INFO,
-                              USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
-                              wValue, 
-                              wIndex, 
-                              info_data, 
-                              1, 
-                              5000);
-      
-      if (retval >= 0) {
-        printk(KERN_INFO "ELE784 -> GET_INFO returned: 0x%02x\n", info_data[0]);
-        printk(KERN_INFO "  Bit 0 - GET support: %s\n", (info_data[0] & 0x01) ? "YES" : "NO");
-        printk(KERN_INFO "  Bit 1 - SET support: %s\n", (info_data[0] & 0x02) ? "YES" : "NO");
-        printk(KERN_INFO "  Bit 2 - Disabled:    %s\n", (info_data[0] & 0x04) ? "YES" : "NO");
-        printk(KERN_INFO "  Bit 3 - Autoupdate:  %s\n", (info_data[0] & 0x08) ? "YES" : "NO");
-        printk(KERN_INFO "  Bit 4 - Asynchronous:%s\n", (info_data[0] & 0x10) ? "YES" : "NO");
-      } else {
-        printk(KERN_ERR "ELE784 -> GET_INFO failed: %ld\n", retval);
-      }
-      
-      kfree(info_data);
-      info_data = NULL;
-      break;
-    }
-
-    case IOCTL_PANTILT_GET_CAPS:
-    {
-      printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_GET_CAPS\n");
-      
-      uint8_t *min_data = kmalloc(4, GFP_KERNEL);
-      uint8_t *max_data = kmalloc(4, GFP_KERNEL);
-      uint8_t *res_data = kmalloc(4, GFP_KERNEL);
-      uint8_t *def_data = kmalloc(4, GFP_KERNEL);
-      
-      if (!min_data || !max_data || !res_data || !def_data) {
-        kfree(min_data);
-        min_data = NULL;
-        kfree(max_data);
-        max_data = NULL;
-        kfree(res_data);
-        res_data = NULL;
-        kfree(def_data);
-        def_data = NULL;
-        retval = -ENOMEM;
-        break;
-      }
-      
-      uint16_t wValue = CT_PANTILT_RELATIVE_CONTROL << 8;
-      uint16_t wIndex = 0x0100;
-      
-      // GET_MIN
-      retval = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0x00),
-                              GET_MIN,
-                              USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
-                              wValue, wIndex, min_data, 4, 5000);
-      if (retval >= 0) {
-        printk(KERN_INFO "ELE784 -> GET_MIN: [0x%02x 0x%02x 0x%02x 0x%02x]\n",
-              min_data[0], min_data[1], min_data[2], min_data[3]);
-        printk(KERN_INFO "  Pan min speed=%u, Tilt min speed=%u\n", min_data[1], min_data[3]);
-      } else {
-        printk(KERN_ERR "ELE784 -> GET_MIN failed: %ld\n", retval);
-      }
-      
-      // GET_MAX
-      retval = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0x00),
-                              GET_MAX,
-                              USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
-                              wValue, wIndex, max_data, 4, 5000);
-      if (retval >= 0) {
-        printk(KERN_INFO "ELE784 -> GET_MAX: [0x%02x 0x%02x 0x%02x 0x%02x]\n",
-              max_data[0], max_data[1], max_data[2], max_data[3]);
-        printk(KERN_INFO "  Pan max speed=%u, Tilt max speed=%u\n", max_data[1], max_data[3]);
-      } else {
-        printk(KERN_ERR "ELE784 -> GET_MAX failed: %ld\n", retval);
-      }
-      
-      // GET_RES
-      retval = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0x00),
-                              GET_RES,
-                              USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
-                              wValue, wIndex, res_data, 4, 5000);
-      if (retval >= 0) {
-        printk(KERN_INFO "ELE784 -> GET_RES: [0x%02x 0x%02x 0x%02x 0x%02x]\n",
-              res_data[0], res_data[1], res_data[2], res_data[3]);
-        printk(KERN_INFO "  Pan speed resolution=%u, Tilt speed resolution=%u\n", res_data[1], res_data[3]);
-      } else {
-        printk(KERN_ERR "ELE784 -> GET_RES failed: %ld\n", retval);
-      }
-      
-      // GET_DEF
-      retval = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0x00),
-                              GET_DEF,
-                              USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
-                              wValue, wIndex, def_data, 4, 5000);
-      if (retval >= 0) {
-        printk(KERN_INFO "ELE784 -> GET_DEF: [0x%02x 0x%02x 0x%02x 0x%02x]\n",
-              def_data[0], def_data[1], def_data[2], def_data[3]);
-        printk(KERN_INFO "  Pan default speed=%u, Tilt default speed=%u\n", def_data[1], def_data[3]);
-      } else {
-        printk(KERN_ERR "ELE784 -> GET_DEF failed: %ld\n", retval);
-      }
-      
-      kfree(min_data);
-      min_data = NULL;
-      kfree(max_data);
-      max_data = NULL;
-      kfree(res_data);
-      res_data = NULL;
-      kfree(def_data);
-      def_data = NULL;
-      break;
-    }
-
     case IOCTL_PANTILT_RESET:
       printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RESET\n");
       // Commande propriétaire Logitech pour recentrer la caméra
@@ -624,7 +407,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       // Payload: commande reset propriétaire
       #define PANTILT_RESET_CMD     0x03
       #define PANTILT_RESET_VALUE   (0x02 << 8)  // Sélecteur propriétaire
-      #define PANTILT_RESET_INDEX   0x0900       // Interface vidéo + classe
+      #define PANTILT_RESET_INDEX   0x0B00       // Interface vidéo + classe
       #define PANTILT_RESET_TIMEOUT 400          // Timeout en ms
       buffer[0] = PANTILT_RESET_CMD;
       retval = usb_control_msg(udev,
@@ -637,6 +420,47 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       kfree(buffer);
       buffer = NULL;
       break;
+
+    case IOCTL_PANTILT_RELATIVE:
+    {
+      printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RELATIVE\n");
+      struct pantilt_relative rel;
+
+      // read 4 bytes (two int16) from user space
+      if (copy_from_user(&rel, (void __user *)arg, sizeof(rel)))
+        return -EFAULT;
+
+      // allocate 4 bytes for USB payload
+      data = kmalloc(4, GFP_KERNEL);
+      if (!data) 
+        return -ENOMEM;
+
+      // fill as little-endian
+      data[0] = rel.pan & 0xFF;
+      data[1] = (rel.pan >> 8) & 0xFF;
+      data[2] = rel.tilt & 0xFF;
+      data[3] = (rel.tilt >> 8) & 0xFF;
+
+      #define PANTILT_RELATIVE_CONTROL (0x01<<8)
+      #define PANTILT_RELATIVE_INDEX 0x0B00
+      #define PANTILT_RELATIVE_TIMEOUT 400
+
+      retval = usb_control_msg(udev,
+                               usb_sndctrlpipe(udev,0),
+                               SET_CUR, // bRequest = 1
+                               USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+                               PANTILT_RELATIVE_CONTROL,
+                               PANTILT_RELATIVE_INDEX,
+                               data,
+                               4,
+                               PANTILT_RELATIVE_TIMEOUT);
+                                                       
+      kfree(data);
+      data = NULL;
+      break;
+    }
+    
+    // Handle IOCTL_STREAMON command
     case IOCTL_STREAMON:
       printk(KERN_INFO "ELE784 -> IOCTL_STREAMON\n");
       /*******************************************************************************
@@ -727,6 +551,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       }
       break;
 
+    // Handle IOCTL_STREAMOFF command
     case IOCTL_STREAMOFF:
       printk(KERN_INFO "ELE784 -> IOCTL_STREAMOFF\n");
       /*******************************************************************************
@@ -740,10 +565,10 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       retval = -EINVAL;
       break;
   }
-
   return retval;
 }
 
+// Read function for video streaming device
 ssize_t ele784_read(struct file *file, char __user *buffer, size_t count, loff_t *f_pos) {
 /*******************************************************************************
 	Ici, il faut :
