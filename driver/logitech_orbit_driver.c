@@ -264,7 +264,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
     data_size = user_request.data_size;
     request   = user_request.request;
     value     = (user_request.value) << 8;
-    index     = (user_request.index); //<< 8 | interface->cur_altsetting->desc.bInterfaceNumber;
+    index     = (user_request.index) << 8 | interface->cur_altsetting->desc.bInterfaceNumber;
     timeout   = user_request.timeout;
     data      = NULL;
 

@@ -85,7 +85,7 @@ int main() {
     test_ioctl_streamon(fd);
 
     // Test : IOCTL_STREAMOFF
-    test_ioctl_streamoff(fd);
+    //test_ioctl_streamoff(fd);
 
     return 0;
 }
@@ -198,15 +198,25 @@ void test_ioctl_streamon(int fd) {
 
     ioctl(fd, IOCTL_GET, &req);
 
+    printf("\nGetDeF :\n");
+    for (int i = 0; i < sizeof(bufferStreamOn); i++)
+        printf("0x%02X ", bufferStreamOn[i]);
+    printf("\n");
+
     /*SET_CUR (set configuration)*/
-    req.request    = 0x01;            // SET_CUR
-    req.value      = 0x01;            // VS_PROBE_CONTROL
-    req.index      = 0x01;            // Interface 1
+    req.request    = 0x01;    // SET_CUR
+    req.value      = 0x01;    // VS_PROBE_CONTROL
+    req.index      = 0x01;    // Interface 1
     req.timeout    = 5000;
     req.data_size  = sizeof(bufferStreamOn);
     req.data       = bufferStreamOn;
 
     ioctl(fd, IOCTL_SET, &req);  // Aucun argument à passer
+
+    printf("\nSetCur :\n");
+    for (int i = 0; i < sizeof(bufferStreamOn); i++)
+        printf("0x%02X ", bufferStreamOn[i]);
+    printf("\n");
     
     /*GET_CUR (configuration has changed?)*/
     req.request    = 0x81;            // GET_CUR
@@ -218,9 +228,14 @@ void test_ioctl_streamon(int fd) {
 
     ioctl(fd, IOCTL_GET, &req);  // Aucun argument à passer
 
+    printf("\nGetCur :\n");
+    for (int i = 0; i < sizeof(bufferStreamOn); i++)
+        printf("0x%02X ", bufferStreamOn[i]);
+    printf("\n");
+
     /*SET_CUR (commit configuration)*/
     req.request    = 0x01;            // SET_CUR
-    req.value      = 0x01;            // VS_PROBE_CONTROL
+    req.value      = 0x02;            // VS_COMMIT_CONTROL
     req.index      = 0x01;            // Interface 1
     req.timeout    = 5000;
     req.data_size  = sizeof(bufferStreamOn);
@@ -228,9 +243,16 @@ void test_ioctl_streamon(int fd) {
 
     ioctl(fd, IOCTL_SET, &req);  // Aucun argument à passer
 
+    printf("\nSetCur :\n");
+    for (int i = 0; i < sizeof(bufferStreamOn); i++)
+        printf("0x%02X ", bufferStreamOn[i]);
+    printf("\n");
+
+    //------------------
+
     /*GET_CUR (configuration has changed?)*/
     req.request    = 0x81;            // GET_CUR
-    req.value      = 0x01;            // VS_PROBE_CONTROL
+    req.value      = 0x02;            // VS_COMMIT_CONTROL
     req.index      = 0x01;            // Interface 1
     req.timeout    = 5000;
     req.data_size  = sizeof(bufferStreamOn);
@@ -238,7 +260,7 @@ void test_ioctl_streamon(int fd) {
 
     ioctl(fd, IOCTL_GET, &req);
 
-    printf("Configuration du stream :\n");
+    printf("\nLast GetCur :\n");
     for (int i = 0; i < sizeof(bufferStreamOn); i++)
         printf("0x%02X ", bufferStreamOn[i]);
     printf("\n");
