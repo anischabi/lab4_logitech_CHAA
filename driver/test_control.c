@@ -60,21 +60,21 @@ int main() {
         return 1;
     }
 
-    /*********************************************
-     * 1) PERFORM RESET
-     *********************************************/
-    printf("Sending RESET command...\n");
-
-    if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
-        perror("IOCTL_PANTILT_RESET failed");
-    } else {
-        printf("RESET sent successfully!\n");
-    }
-    sleep(2);
-    
     // /*********************************************
-    //  * 2) SEND PAN_RELATIVE = +4000 (tilt = 0)
+    //  * 1) PERFORM RESET
     //  *********************************************/
+    // printf("Sending RESET command...\n");
+
+    // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
+    //     perror("IOCTL_PANTILT_RESET failed");
+    // } else {
+    //     printf("RESET sent successfully!\n");
+    // }
+    // sleep(2);
+    
+    /*********************************************
+     * 2) SEND PAN_RELATIVE = +4000 (tilt = 0)
+     *********************************************/
     // struct pantilt_relative rel;
     // printf("\nSending PAN_RELATIVE +4000...\n");
     // rel.pan = 4000;
@@ -87,9 +87,9 @@ int main() {
     // }
     // sleep(2);
 
-    // // /*********************************************
-    // //  * 3) SEND PAN_RELATIVE = -4000 (tilt = 0)
-    // //  *********************************************/
+    // /*********************************************
+    //  * 3) SEND PAN_RELATIVE = -4000 (tilt = 0)
+    //  *********************************************/
     // printf("\nSending PAN_RELATIVE -4000...\n");
     // rel.pan = -4000;
     // rel.tilt = 0;
@@ -102,9 +102,9 @@ int main() {
     // sleep(2);
 
 
-    // // /*********************************************
-    // //  * 4) SEND tilt_RELATIVE = 1000 (PAN= 0)
-    // //  *********************************************/
+    // /*********************************************
+    //  * 4) SEND tilt_RELATIVE = 1000 (PAN= 0)
+    //  *********************************************/
     // printf("\nSending TILT_RELATIVE = 1000...\n");
     // rel.pan = 0;
     // rel.tilt = 1000;
@@ -116,9 +116,9 @@ int main() {
     // }
     // sleep(2);
 
-    // // /*********************************************
-    // //  * 5) SEND tilt_RELATIVE = -1000 (PAN= 0)
-    // //  *********************************************/
+    // /*********************************************
+    //  * 5) SEND tilt_RELATIVE = -1000 (PAN= 0)
+    //  *********************************************/
     // printf("\nSending TILT_RELATIVE = -1000...\n");
     // rel.pan = 0;
     // rel.tilt = -1000;
@@ -130,9 +130,9 @@ int main() {
     // }
     // sleep(1);
 
-    // // /*********************************************
-    // //  * 6) SEND Pan = 4000 and tilt =1000
-    // //  *********************************************/
+    // /*********************************************
+    //  * 6) SEND Pan = 4000 and tilt =1000
+    //  *********************************************/
     // printf("\nSending PAN =4000 and TILT = 1000...\n");
     // rel.pan = 4000;
     // rel.tilt = 1000;
@@ -144,9 +144,9 @@ int main() {
     // }
     // sleep(1);
 
-    // // /*********************************************
-    // //  * 7) SEND Pan = -4000 and tilt =-1000
-    // //  *********************************************/
+    // /*********************************************
+    //  * 7) SEND Pan = -4000 and tilt =-1000
+    //  *********************************************/
     // printf("\nSending PAN =-4000 and TILT =-1000 #1...\n");
     // rel.pan = -4000;
     // rel.tilt = -1000;
@@ -157,9 +157,9 @@ int main() {
     // }
     // sleep(1);
 
-    // /*********************************************
-    //  * 8) SEND Pan = -4000 and tilt =-1000
-    //  *********************************************/
+    /*********************************************
+     * 8) SEND Pan = -4000 and tilt =-1000
+     *********************************************/
     // printf("\nSending PAN =-4000 and TILT =-1000 #2 ...\n");
     // if (ioctl(fd, IOCTL_PANTILT_RELATIVE, &rel) < 0) {
     //     perror("IOCTL_PANTILT_RELATIVE (pan = -4000 and tilt = -1000) #2 failed");
@@ -168,47 +168,78 @@ int main() {
     // }
 
     
-    uint8_t gbuf[2]= {0,0};
-    uint8_t buf[4]= {0,0,0,0};
+    // uint8_t gbuf[2]= {0,0};
+    // uint8_t buf[4]= {0,0,0,0};
 
-    printf("\n--- GAIN GET_CUR ---\n");
-    get(fd, GET_CUR,  0x0400, 0x0300, gbuf, 2);
-    uint16_t gain = gbuf[0] | (gbuf[1] << 8);
-    printf("gain = %u\n", gain);
-    sleep(1);
+    // printf("\n--- GAIN GET_CUR ---\n");
+    // get(fd, GET_CUR,  0x0400, 0x0300, gbuf, 2);
+    // uint16_t gain = gbuf[0] | (gbuf[1] << 8);
+    // printf("gain = %u\n", gain);
+    // sleep(1);
     
-    printf("\n--- SET GAIN = 50 ---\n");
-    gain = 50;
-    gbuf[0] = gain & 0xFF;
-    gbuf[1] = (gain >> 8) & 0xFF;
-    set(fd, SET_CUR,  0x0400, 0x0300, gbuf, 2);
-    sleep(1);
+    // printf("\n--- SET GAIN = 50 ---\n");
+    // gain = 50;
+    // gbuf[0] = gain & 0xFF;
+    // gbuf[1] = (gain >> 8) & 0xFF;
+    // set(fd, SET_CUR,  0x0400, 0x0300, gbuf, 2);
+    // sleep(1);
 
-    printf("\n--- GAIN GET_CUR ---\n");
-    get(fd, GET_CUR,  0x0400, 0x0300, gbuf, 2);
-    gain = gbuf[0] | (gbuf[1] << 8);
-    printf("gain = %u\n", gain);
-    sleep(1);
+    // printf("\n--- GAIN GET_CUR ---\n");
+    // get(fd, GET_CUR,  0x0400, 0x0300, gbuf, 2);
+    // gain = gbuf[0] | (gbuf[1] << 8);
+    // printf("gain = %u\n", gain);
+    // sleep(1);
     
-    printf("\n--- GET_CUR ---\n");
-    get(fd, GET_CUR, SELECTOR, INDEX, buf, 4);
-    decode_pantilt(buf);
+    // printf("\n--- GET_CUR ---\n");
+    // get(fd, GET_CUR, SELECTOR, INDEX, buf, 4);
+    // decode_pantilt(buf);
 
-    printf("\n--- GET_MIN ---\n");
-    get(fd, GET_MIN, SELECTOR, INDEX, buf, 4);
-    decode_pantilt(buf);
+    // printf("\n--- GET_MIN ---\n");
+    // get(fd, GET_MIN, SELECTOR, INDEX, buf, 4);
+    // decode_pantilt(buf);
 
-    printf("\n--- GET_MAX ---\n");
-    get(fd, GET_MAX, SELECTOR, INDEX, buf, 4);
-    decode_pantilt(buf);
+    // printf("\n--- GET_MAX ---\n");
+    // get(fd, GET_MAX, SELECTOR, INDEX, buf, 4);
+    // decode_pantilt(buf);
 
-    printf("\n--- GET_RES ---\n");
-    get(fd, GET_RES, SELECTOR, INDEX, buf, 4);
-    decode_pantilt(buf);
+    // printf("\n--- GET_RES ---\n");
+    // get(fd, GET_RES, SELECTOR, INDEX, buf, 4);
+    // decode_pantilt(buf);
 
-    printf("\n--- GET_DEF ---\n");
-    get(fd, GET_DEF, SELECTOR, INDEX, buf, 4);
-    decode_pantilt(buf);
+    // printf("\n--- GET_DEF ---\n");
+    // get(fd, GET_DEF, SELECTOR, INDEX, buf, 4);
+    // decode_pantilt(buf);
+
+
+    
+
+    /*********************************************
+     * NEW PART: STREAMON / STREAMOFF
+     *********************************************/
+    printf("\n==============================\n");
+    printf("      IOCTL_STREAMON\n");
+    printf("==============================\n");
+
+    if (ioctl(fd, IOCTL_STREAMON, NULL) < 0) {
+        perror("IOCTL_STREAMON failed");
+    } else {
+        printf("STREAMON successfully submitted.\n");
+    }
+
+    printf("Waiting 3 seconds while URBs run...\n");
+    sleep(3);
+
+
+    printf("\n==============================\n");
+    printf("      IOCTL_STREAMOFF\n");
+    printf("==============================\n");
+
+    if (ioctl(fd, IOCTL_STREAMOFF, NULL) < 0) {
+        perror("IOCTL_STREAMOFF failed");
+    } else {
+        printf("STREAMOFF done.\n");
+    }
+
         
     close(fd);
     return 0;

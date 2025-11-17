@@ -278,7 +278,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
   struct usb_request user_request; // structure to hold user request
   uint8_t  request, data_size; // size of data buffer
   uint16_t value, index, timeout; // USB request parameters
-  uint8_t  *data; // data buffer pointer
+  uint8_t  *data = NULL; // data buffer pointer
 
   int i,j; // loop counters
   long retval=0; // return value
@@ -286,97 +286,139 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
   // Handle different IOCTL commands
   switch(cmd) {
 
-    // Handle IOCTL_GET command 
+    // Handle IOCTL_GET command (get = reads from device/ ask to device)
     case IOCTL_GET:
       printk(KERN_INFO "ELE784 -> IOCTL_GET\n");
-      // 1. Copy request from user space
-      // - 'arg' is a pointer to a usb_request structure in user space.
-      // - copy_from_user() safely copies it into kernel memory.
-      // - This avoids directly dereferencing user-space pointers, which would crash the kernel.
+      /* ---------------------------------------------------------
+      * Step 1 — Copy the usb_request header from user space
+      * --------------------------------------------------------- */
       if (copy_from_user(&user_request, (struct usb_request __user *)arg, sizeof(struct usb_request))) {
-        // Error handling if copy fails
         printk(KERN_ERR "ELE784 -> IOCTL_GET : copy_from_user (request) failed\n");
         retval = -EFAULT;
         break;
       }
-      /* Allocate kernel buffer for incoming data */
+      
+      /* Basic sanity check */      
       data_size = user_request.data_size;
-      data = NULL;                   // Pointer for buffer to receive data
-      // 3. Allocate buffer if data_size > 0
+      if (data_size < 0 || data_size > 1024) {
+          printk(KERN_ERR "ELE784 -> IOCTL_GET: invalid data_size=%d [0;1024]\n", data_size);
+          retval = -EINVAL;
+          break;
+      }
+      /* ---------------------------------------------------------
+      * Step 2 — Allocate kernel buffer for receiving USB payload
+      * --------------------------------------------------------- */
       if (data_size > 0) {
-        // allocate memory in kernel space
         data = kmalloc(data_size, GFP_KERNEL);
-        // check for allocation failure
         if (!data) {
-          // log error and set return value
-          printk(KERN_ERR "ELE784 -> IOCTL_GET : kmalloc failed\n");
+          printk(KERN_ERR "ELE784 -> IOCTL_GET: kmalloc(%d) failed\n",data_size);
           retval = -ENOMEM;
           break;
         }
       }
-
-      /* Perform the USB GET (device → host) */
+      /* ---------------------------------------------------------
+      * Step 3 — Perform the USB GET request (device → host)
+      * --------------------------------------------------------- */
       retval = usb_control_msg(
           udev,
-          usb_rcvctrlpipe(udev, 0),
+          usb_rcvctrlpipe(udev, 0), // Control-IN : endpoint 0
           user_request.request,   // GET_CUR, GET_MIN, GET_MAX, ...
           USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
           user_request.value,     // full 16-bit wValue already provided by user
           user_request.index,     // full 16-bit wIndex (interface) already provided
-          data,
-          data_size,
+          data,                   // destination buffer
+          data_size,              // expected length
           user_request.timeout
       );
 
-      // 5) Copy the received data back to user space
-      // - Only copy if usb_control_msg succeeded and there was data to receive
-      if (retval >= 0 && data_size > 0) {
-        if (copy_to_user(user_request.data, data, data_size)) {
-          printk(KERN_ERR "ELE784 -> IOCTL_GET : copy_to_user failed\n");
-          retval = -EFAULT; // set error if copying fails
+      /* ---------------------------------------------------------
+      * Step 4 — Handle USB errors
+      * --------------------------------------------------------- */
+      if(retval < 0) {
+        /* USB failure error message already contained in retval */
+        printk(KERN_ERR "ELE784 -> IOCTL_GET: usb_control_msg failed (%d)\n",retval);
+        if (data) {
+          kfree(data);
+          data = NULL;
         }
-      }    
-      // 6) Free the kernel buffer
-      // - Dynamically allocated memory must always be freed to avoid memory leaks
-      kfree(data);
-      data = NULL;
+        break; // to freeing region at bottom       
+      }
+      /* ---------------------------------------------------------
+      * Step 5 — Warn if short packet (should never happen for UVC)
+      * --------------------------------------------------------- */
+      if (retval != data_size) {
+        /* Continue anyway, return what we received */
+        printk(KERN_WARNING "ELE784 -> IOCTL_GET: short packet (%d/%d bytes)\n",retval, data_size);
+      }
+      /* ---------------------------------------------------------
+      * Step 6 — Copy data back to user space
+      * --------------------------------------------------------- */
+      if (data_size > 0) {
+        if (copy_to_user(user_request.data, data, data_size)) {
+          printk(KERN_ERR "ELE784 -> IOCTL_GET: copy_to_user failed\n");
+          if (data) {
+            kfree(data);
+            data = NULL;
+          }
+          retval = -EFAULT;
+          break;
+        }
+      }
+      /* api de ioctl demande 0 comme retour en cas de succes 
+      * Success: use 0 as ioctl return code 
+      */
+      retval = 0;
+      /* ---------------------------------------------------------
+      * Step 7 — Free kernel buffer
+      * --------------------------------------------------------- */
+      if (data) {
+        kfree(data);
+        data = NULL;
+      }
       break; //  Required to exit the switch
 
+    // set = write a value to device. 
     case IOCTL_SET:
         printk(KERN_INFO "ELE784 -> IOCTL_SET\n");
-
-        /* 1. Copy the request struct from user space */
-        if (copy_from_user(&user_request,
-                          (struct usb_request __user *)arg,
-                          sizeof(struct usb_request))) {
-            printk(KERN_ERR "ELE784 -> IOCTL_SET: copy_from_user failed\n");
+        /* ---------------------------------------------------------
+        * Step 1 — Copy the usb_request header from user space
+        * --------------------------------------------------------- */
+        if (copy_from_user(&user_request,(struct usb_request __user *)arg,sizeof(struct usb_request))) {
+            printk(KERN_ERR "ELE784 -> IOCTL_SET: copy_from_user(request) failed\n");
             retval = -EFAULT;
             break;
         }
-
-        /* 2. Allocate payload buffer if needed */
+        /* Basic sanity check */
         data_size = user_request.data_size;
-        data = NULL;
-
-        if (data_size > 0) {
-            data = kmalloc(data_size, GFP_KERNEL);
-            if (!data) {
-                retval = -ENOMEM;
-                break;
-            }
-
-            /* Copy payload (host → device) */
-            if (copy_from_user(data,
-                              (uint8_t __user *)user_request.data,
-                              data_size)) {
-                printk(KERN_ERR "ELE784 -> IOCTL_SET: copy_from_user(data) failed\n");
-                kfree(data);
-                retval = -EFAULT;
-                break;
-            }
+        if (data_size < 0 || data_size > 1024) {
+          printk(KERN_ERR "ELE784 -> IOCTL_SET: invalid data_size=%d [0;1024]\n",data_size);
+          retval = -EINVAL;
+          break;
         }
-
-        /* 3. Perform the USB SET (OUT direction — host → device) */
+        /* ---------------------------------------------------------
+        * Step 2 — Allocate kernel buffer for sending USB payload
+        * --------------------------------------------------------- */
+        if (data_size > 0) {
+          data = kmalloc(data_size, GFP_KERNEL);
+          if (!data) {
+            printk(KERN_ERR "ELE784 -> IOCTL_SET: kmalloc(%d) failed\n",data_size);
+            retval = -ENOMEM;
+            break;
+          }
+          /* Copy payload (host → device) */
+          if (copy_from_user(data,(uint8_t __user *)user_request.data,data_size)) {
+            printk(KERN_ERR "ELE784 -> IOCTL_SET: copy_from_user(data) failed\n");
+            if (data) {
+              kfree(data);
+              data = NULL;
+            }
+            retval = -EFAULT;
+            break;
+          }
+        }
+        /* ---------------------------------------------------------
+        * Step 3 — Perform the USB SET request (host → device)
+        * --------------------------------------------------------- */
         retval = usb_control_msg(
             udev,
             usb_sndctrlpipe(udev, 0),
@@ -388,63 +430,111 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
             data_size,
             user_request.timeout
         );
-        /* 4. Free payload buffer */
-        if (data) {
+        /* ---------------------------------------------------------
+        * Step 4 — Handle USB errors
+        * --------------------------------------------------------- */
+        if (retval < 0) {
+          printk(KERN_ERR "ELE784 -> IOCTL_SET: usb_control_msg failed (%d)\n",retval);
+          if (data) {
             kfree(data);
             data = NULL;
+          }
+          break; // exit this case
         }
-
+        /* On success, ioctl returns 0 */
+        retval = 0;
+        /* ---------------------------------------------------------
+        * Step 5 — Free kernel buffer
+        * --------------------------------------------------------- */
+        if (data) {
+          kfree(data);
+          data = NULL;
+        }
         break;
 
   
     case IOCTL_PANTILT_RESET:
       printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RESET\n");
-      // Commande propriétaire Logitech pour recentrer la caméra
-      // Allouer dynamiquement le buffer (obligation USB)
-      uint8_t *buffer = kmalloc(1, GFP_KERNEL);
-      if (!buffer)
-        return -ENOMEM;
-      // Payload: commande reset propriétaire
-      #define PANTILT_RESET_CMD     0x03
-      #define PANTILT_RESET_VALUE   (0x02 << 8)  // Sélecteur propriétaire
-      #define PANTILT_RESET_INDEX   0x0B00       // Interface vidéo + classe
-      #define PANTILT_RESET_TIMEOUT 400          // Timeout en ms
-      buffer[0] = PANTILT_RESET_CMD;
+      /* ---------------------------------------------------------
+      * Step 1 — Allocate kernel buffer (1 byte for reset command)
+      * --------------------------------------------------------- */
+      data = kmalloc(1, GFP_KERNEL);
+      if (!data) {
+        printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RESET: kmalloc(1) failed\n");
+        retval = -ENOMEM;
+        break;
+      }
+      /* ---------------------------------------------------------
+      * Step 2 — Fill payload
+      * --------------------------------------------------------- */
+      data[0] = PANTILT_RESET_CMD;
+      /* ---------------------------------------------------------
+      * Step 3 — Perform USB SET request (host → device)
+      * --------------------------------------------------------- */
       retval = usb_control_msg(udev,
                               usb_sndctrlpipe(udev, 0),
                               SET_CUR,
                               USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
                               PANTILT_RESET_VALUE,
                               PANTILT_RESET_INDEX,
-                              buffer, 1, PANTILT_RESET_TIMEOUT);
-      kfree(buffer);
-      buffer = NULL;
+                              data, 1, PANTILT_RESET_TIMEOUT);
+      /* ---------------------------------------------------------
+      * Step 4 — Handle USB errors
+      * --------------------------------------------------------- */
+      if (retval < 0) {
+        printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RESET: usb_control_msg failed (%d)\n",retval);
+        if (data) {
+          kfree(data);
+          data = NULL;
+        }
+        break;
+      }
+      /* Success return value */
+      retval = 0;
+      /* ---------------------------------------------------------
+      * Step 5 — Free buffer
+      * --------------------------------------------------------- */
+      if (data) {
+        kfree(data);
+        data = NULL;
+      }
       break;
 
     case IOCTL_PANTILT_RELATIVE:
     {
       printk(KERN_INFO "ELE784 -> IOCTL_PANTILT_RELATIVE\n");
+
+      /* ---------------------------------------------------------
+      * Step 1 — Copy user-space structure (relative pan/tilt)
+      * --------------------------------------------------------- */
       struct pantilt_relative rel;
-
       // read 4 bytes (two int16) from user space
-      if (copy_from_user(&rel, (void __user *)arg, sizeof(rel)))
-        return -EFAULT;
+      if (copy_from_user(&rel, (void __user *)arg, sizeof(rel))){
+        printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE: copy_from_user(rel) failed\n");
+        retval = -EFAULT;
+        break;
+      }
 
-      // allocate 4 bytes for USB payload
+      /* ---------------------------------------------------------
+      * Step 2 — Allocate 4-byte payload buffer
+      * --------------------------------------------------------- */
       data = kmalloc(4, GFP_KERNEL);
-      if (!data) 
-        return -ENOMEM;
+      if (!data) {
+        printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RESET: kmalloc(4) failed\n");
+        retval = -ENOMEM;
+        break;
+      }
 
-      // fill as little-endian
+      /* ---------------------------------------------------------
+      * Step 3 — Fill payload (little-endian pan/tilt)
+      * --------------------------------------------------------- */
       data[0] = rel.pan & 0xFF;
       data[1] = (rel.pan >> 8) & 0xFF;
       data[2] = rel.tilt & 0xFF;
       data[3] = (rel.tilt >> 8) & 0xFF;
-
-      #define PANTILT_RELATIVE_CONTROL (0x01<<8)
-      #define PANTILT_RELATIVE_INDEX 0x0B00
-      #define PANTILT_RELATIVE_TIMEOUT 400
-
+      /* ---------------------------------------------------------
+      * Step 4 — Send USB SET_CUR request (host → device)
+      * --------------------------------------------------------- */      
       retval = usb_control_msg(udev,
                                usb_sndctrlpipe(udev,0),
                                SET_CUR, // bRequest = 1
@@ -454,9 +544,28 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
                                data,
                                4,
                                PANTILT_RELATIVE_TIMEOUT);
-                                                       
-      kfree(data);
-      data = NULL;
+      /* ---------------------------------------------------------
+      * Step 5 — Handle USB errors
+      * --------------------------------------------------------- */
+      if (retval < 0) {
+          printk(KERN_ERR "ELE784 -> IOCTL_PANTILT_RELATIVE: usb_control_msg failed (%d)\n",
+                retval);
+          if (data) {
+              kfree(data);
+              data = NULL;
+          }
+          break;
+      }
+
+      /* ioctl API requires 0 on success */
+      retval = 0;
+      /* ---------------------------------------------------------
+      * Step 6 — Free payload buffer
+      * --------------------------------------------------------- */
+      if (data) {
+        kfree(data);
+        data = NULL;
+      }
       break;
     }
     
@@ -465,36 +574,100 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       printk(KERN_INFO "ELE784 -> IOCTL_STREAMON\n");
       /*******************************************************************************
       Ici, il faut préparer et transmettre une requête similaire à un IOCTL_GET avec les caractéristiques suivantes :
-          data_size = 26
-          request   = GET_CUR
-          value     = VS_PROBE_CONTROL
-          index     = 0x0000
-          timeout   = 5000
+        data_size = 26
+        request   = GET_CUR
+        value     = VS_PROBE_CONTROL
+        index     = 0x0000
+        timeout   = 5000
       Les données récoltées grâce à cette requête seront ensuite utilisées pour configurer les requêtes Urb (voir ci-dessous).
       *******************************************************************************/
+
       {	
+
+      
+        /* ======= ÉTAPE A : GET_CUR / VS_PROBE_CONTROL (Probe) ======= */
+        /* 1) Allouer le buffer pour la réponse (26 octets) */
+        data = kmalloc(PROBE_LENGTH, GFP_KERNEL);
+        if (!data) {
+          printk(KERN_ERR "ELE784 -> IOCTL_STREAMON : kmalloc(%d) failed\n",PROBE_LENGTH);
+          retval = -ENOMEM;
+          break;
+        }
+        /* 2) Envoyer la requête de type GET_CUR VS_PROBE_CONTROL */
+        retval = usb_control_msg(
+            udev,
+            usb_rcvctrlpipe(udev, 0),                         // pipe de contrôle IN
+            GET_CUR,                                          // bRequest = 0x81
+            USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,// bmRequestType = 0xA1
+            VS_PROBE_CONTROL<<8,                                 // wValue (selector Probe)
+            0x0001,                                           // wIndex (interface vidéo)
+            data,                                             // buffer de 26 octets
+            PROBE_LENGTH,                                        // wLength = 26
+            5000                                              // timeout en ms
+        );
+
+        if (retval < 0) {
+          printk(KERN_ERR "ELE784 -> IOCTL_STREAMON : usb_control_msg(GET_CUR/PROBE) failed, retval=%d\n",retval);
+          if(data){
+            kfree(data);
+            data = NULL;
+          }
+          break;
+        }
+
         uint32_t bandwidth, psize, size, npackets, urb_size;
         struct usb_host_endpoint *ep = NULL;
         struct usb_host_interface *alts;
         int	   best_altset;
+
+        /* Use VIDEO STREAMING interface #1, NOT the control interface */
+        struct usb_interface *vs_intf = usb_ifnum_to_if(udev, 1);
+        if (!vs_intf) {
+          printk(KERN_ERR "Could not get VS interface #1\n");
+          retval = -ENODEV;
+          break;
+        }
+        printk(KERN_INFO, "ELE784 -> IOCTL_STREAMON: VS interface #1 has %u altsettings\n",vs_intf->num_altsetting);
         // À partir des données de configurations obtenues, détermine la Bande Passante et la taille des transferts :	  
         bandwidth = (((uint32_t) data[25]) << 24) | (((uint32_t) data[24]) << 16) | (((uint32_t) data[23]) << 8) | (((uint32_t) data[22]) << 0);
         size      = (((uint32_t) data[21]) << 24) | (((uint32_t) data[20]) << 16) | (((uint32_t) data[19]) << 8) | (((uint32_t) data[18]) << 0);
 
         // Selon la Bande Passante et la taille des Paquets, trouve la meilleure "Interface Alternative" a utiliser (dépend de la résolution Video choisie)
         // Note :	Chacune de ces "Interfaces Alternatives" n'a qu'un seul Endpoint...donc on conserve l'info sur ce Endpoint.
-        for (best_altset = 0; best_altset < interface->num_altsetting; best_altset++) {
-          alts = &(interface->altsetting[best_altset]);
+        // for (best_altset = 0; best_altset < interface->num_altsetting; best_altset++) {
+        //   alts = &(interface->altsetting[best_altset]);
+        for (best_altset = 0; best_altset < vs_intf->num_altsetting; best_altset++) {
+            alts = &vs_intf->altsetting[best_altset];
           if (alts->desc.bNumEndpoints < 1)
             continue;
           ep = &(alts->endpoint[0]);
+
+              /* Debug: print info about this endpoint */
+          printk(KERN_INFO
+                "ELE784 -> alt=%d bEndpointAddress=0x%02x bmAttributes=0x%02x wMaxPacketSize=0x%04x\n",
+                best_altset,
+                ep->desc.bEndpointAddress,
+                ep->desc.bmAttributes,
+                le16_to_cpu(ep->desc.wMaxPacketSize));
+          /* Skip anything that is NOT isochronous */
+          if (!usb_endpoint_xfer_isoc(&ep->desc)) {
+              printk(KERN_INFO "ELE784 -> alt=%d: not isochronous, skipping\n",best_altset);
+              ep = NULL;
+              continue;
+          }
           psize = (ep->desc.wMaxPacketSize & 0x07ff) * (((ep->desc.wMaxPacketSize >> 11) & 0x0003) + 1);
+          printk(KERN_INFO "ELE784 -> alt=%d: isoc endpoint, psize=%u, bandwidth=%u\n",best_altset, psize, bandwidth);
           if (psize >= bandwidth)
             break;
         }
         if (ep == NULL) {
           printk(KERN_WARNING "ELE784 -> IOCTL_STREAMON : No Endpoint found error");
-          return -ENOMEM;
+          if(data){
+            kfree(data);
+            data = NULL;
+          }
+          retval = -ENOMEM;
+          break;
         }
             
         // Avec l'interface choisie, on détermine le nombre de Paquets que chaque Urb aura à transporter.
@@ -506,7 +679,12 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
         driver->frame_buf.Data = kmalloc(urb_size, GFP_KERNEL);
         if (driver->frame_buf.Data == NULL) {
           printk(KERN_WARNING "ELE784 -> IOCTL_STREAMON : No memory for URB buffer[0]");
-          return -ENOMEM;
+          if(data){
+            kfree(data);
+            data =NULL;
+          }
+          retval = -ENOMEM;
+          break;
         }
         driver->frame_buf.MaxLength = urb_size;
         driver->frame_buf.BytesUsed = 0; 
@@ -519,31 +697,142 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
         printk(KERN_INFO "ELE784 -> IOCTL_STREAMON : bandwidth = %u psize = %u npackets = %u urb_size = %u best_altset = %u\n", bandwidth, psize, npackets, urb_size, best_altset);
         // Ici, on rend "courante" l'interface alternative choisie comme étant la meilleure.
         retval = usb_set_interface(udev, 1, best_altset); //Important pour mettre la camera dans le bon mode
-
+        if (retval < 0) {
+            if (data){
+              kfree(data);
+              data=NULL;
+            }
+            if (driver->frame_buf.Data){ 
+              kfree(driver->frame_buf.Data);
+              driver->frame_buf.Data = NULL;
+            }
+            break;
+        }else{
+          printk(KERN_INFO "ELE784 -> IOCTL_STREAMON : usb_set_interface successful retval = %d\n",retval);
+        }
         // Finalement, on créé les Urbs Isochronous (un total de URB_COUNT Urbs).
         for (i = 0; i < URB_COUNT; i++) {
+          printk(KERN_WARNING "ELE784 -> IOCTL_STREAMON : creation urb #i = %d",i);
           driver->isoc_in_urb[i] = usb_alloc_urb(npackets, GFP_KERNEL);
           if (driver->isoc_in_urb[i] == NULL) {
             printk(KERN_WARNING "ELE784 -> IOCTL_STREAMON : URB allocation error");
-            return -ENOMEM;
+            if(data){
+              kfree(data);
+              data =NULL;
+            }
+            /* INSERT FIX HERE */
+            // for (j = 0; j < i; j++) {
+            //   usb_free_coherent(udev, urb_size,
+            //       driver->isoc_in_urb[j]->transfer_buffer,
+            //       driver->isoc_in_urb[j]->transfer_dma);
+            //   usb_free_urb(driver->isoc_in_urb[j]);
+            //   driver->isoc_in_urb[j] = NULL;
+            // }
+            if (driver->frame_buf.Data) {
+              kfree(driver->frame_buf.Data);
+              driver->frame_buf.Data = NULL;
+            }
+            retval = -ENOMEM;
+            break;
           }
 
           driver->isoc_in_urb[i]->transfer_buffer = usb_alloc_coherent(udev, urb_size, GFP_KERNEL, &(driver->isoc_in_urb[i]->transfer_dma));
           if (driver->isoc_in_urb[i]->transfer_buffer == NULL) {
             printk(KERN_WARNING "ELE784 -> IOCTL_STREAMON : Transfert buffer allocation error");
             usb_free_urb(driver->isoc_in_urb[i]);
-            return -ENOMEM;
+            if(data){
+              kfree(data);
+              data =NULL;
+            }
+            // /* INSERT FIX HERE */
+            // for (j = 0; j < i; j++) {
+            //   usb_free_coherent(udev, urb_size,
+            //       driver->isoc_in_urb[j]->transfer_buffer,
+            //       driver->isoc_in_urb[j]->transfer_dma);
+            //   usb_free_urb(driver->isoc_in_urb[j]);
+            //   driver->isoc_in_urb[j] = NULL;
+            // }
+            if (driver->frame_buf.Data) {
+              kfree(driver->frame_buf.Data);
+              driver->frame_buf.Data = NULL;
+            }
+            retval = -ENOMEM;
+            break;
           }
 
-        /*******************************************************************************
-        Ici, il s'agit d'initialiser l'Urb Isochronous (voir acétate 16 du cours # 5)
-        Suggestion :	Attacher la structure (driver->frame_buf) au champ "context" de la structure du Urb.
-        ******* ************************************************************************/
+          /*******************************************************************************
+          Ici, il s'agit d'initialiser l'Urb Isochronous (voir acétate 16 du cours # 5)
+          Suggestion :	Attacher la structure (driver->frame_buf) au champ "context" de la structure du Urb.
+          ******* ************************************************************************/
+          struct urb *urb = driver->isoc_in_urb[i];
+          /* Pointeur vers le device */
+          urb->dev = udev;
+          /* Contexte transmis au callback */
+          urb->context = &(driver->frame_buf);
+          /* Endpoint Isochronous IN */
+          urb->pipe = usb_rcvisocpipe(udev, ep->desc.bEndpointAddress);
+          /* Flags recommandés */
+          urb->transfer_flags = URB_ISO_ASAP | URB_NO_TRANSFER_DMA_MAP;
+          /* Intervalle d'interrogation (polling) */
+          urb->interval = ep->desc.bInterval;
+          /* Callback qui sera appelé quand l’URB est complété */
+          urb->complete = complete_callback;
+          /* Nombre de paquets dans l’URB */
+          urb->number_of_packets = npackets;
+          /* Taille totale du buffer */
+          urb->transfer_buffer_length = urb_size;
+          /* Configurer les paquets ISO individuellement */
+          for (j = 0; j < npackets; j++) {
+              urb->iso_frame_desc[j].offset = j * psize;
+              urb->iso_frame_desc[j].length = psize;
+          }
         }
+        
         // Et on lance tous les Urbs créés. 
         /*******************************************************************************
         Ici, il s'agit de soumettre tous les Urbs créés ci-dessus.
         *******************************************************************************/
+        /* ====== ÉTAPE 3 : Soumission des URBs ====== */
+        for (i = 0; i < URB_COUNT; i++) {
+          retval = usb_submit_urb(driver->isoc_in_urb[i], GFP_KERNEL);
+          printk(KERN_INFO "ELE784 -> IOCTL_STREAMON: usb_submit_urb[%d] sucess (%d)\n",i, retval); 
+          if (retval < 0) {
+            printk(KERN_ERR "ELE784 -> IOCTL_STREAMON: usb_submit_urb[%d] failed (%d)\n",i, retval);
+            /* First, free the current (failed) URB i */
+            usb_free_coherent(udev,
+                urb_size,
+                driver->isoc_in_urb[i]->transfer_buffer,
+                driver->isoc_in_urb[i]->transfer_dma);
+            usb_free_urb(driver->isoc_in_urb[i]);
+            driver->isoc_in_urb[i] = NULL;
+            /* rollback: kill + free previously submitted URBs   0..i-1*/
+            while (--i >= 0) {
+              usb_kill_urb(driver->isoc_in_urb[i]);
+              usb_free_coherent(udev,
+                  urb_size,
+                  driver->isoc_in_urb[i]->transfer_buffer,
+                  driver->isoc_in_urb[i]->transfer_dma);
+              usb_free_urb(driver->isoc_in_urb[i]);
+              driver->isoc_in_urb[i] = NULL;
+            }
+            /* free frame buffer */
+            if (driver->frame_buf.Data) {
+                kfree(driver->frame_buf.Data);
+                driver->frame_buf.Data = NULL;
+            }
+            /* free probe data */
+            if (data) {
+                kfree(data);
+                data = NULL;
+            }
+            break; /* leave STREAMON case */
+          }
+        } 
+
+        if (retval >= 0) {
+          printk(KERN_INFO "ELE784 -> IOCTL_STREAMON: streaming started (%d URBs submitted)\n",URB_COUNT);
+        }
+      
       } 
       if (data) {
         kfree(data);
@@ -552,12 +841,43 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
       break;
 
     // Handle IOCTL_STREAMOFF command
-    case IOCTL_STREAMOFF:
+  case IOCTL_STREAMOFF:
       printk(KERN_INFO "ELE784 -> IOCTL_STREAMOFF\n");
-      /*******************************************************************************
-      Ici, il faut "tuer" et éliminer tous les Urbs qui sont actifs et arrêter le Streaming de la caméra.
-      Pour arrêter le Streaming de la caméra, il suffit de rendre "courant" l'interface alternative 0.
-      *******************************************************************************/
+
+      /* 1) Kill all URBs */
+      for (i = 0; i < URB_COUNT; i++) {
+        if (driver->isoc_in_urb[i]) {
+          usb_kill_urb(driver->isoc_in_urb[i]);
+        }
+      }
+
+      /* 2) Free URB resources */
+      for (i = 0; i < URB_COUNT; i++) {
+        if (driver->isoc_in_urb[i]) {
+          usb_free_coherent(udev,
+                driver->frame_buf.MaxLength,
+                driver->isoc_in_urb[i]->transfer_buffer,
+                driver->isoc_in_urb[i]->transfer_dma);
+
+          usb_free_urb(driver->isoc_in_urb[i]);
+          driver->isoc_in_urb[i] = NULL;
+        }
+      }
+
+      /* 3) Free frame buffer */
+      if (driver->frame_buf.Data) {
+        kfree(driver->frame_buf.Data);
+        driver->frame_buf.Data = NULL;
+      }
+
+      /* 4) Set altsetting 0 (stop streaming) */
+      usb_set_interface(udev, 1, 0);
+
+      /* 5) Reset completions */
+      reinit_completion(&driver->frame_buf.new_frame_start);
+      reinit_completion(&driver->frame_buf.urb_completion);
+
+      retval = 0;
       break;
 
     default:

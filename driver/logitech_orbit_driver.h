@@ -10,6 +10,7 @@
 #include <linux/wait.h>
 #include <linux/spinlock.h>
 #include <linux/usb.h>
+#include <linux/usb/ch9.h>
 #include <linux/usb/video.h>
 #include <linux/completion.h>
 #include <linux/uaccess.h>
@@ -32,6 +33,17 @@ MODULE_LICENSE("GPL");
 #define PANTILT_DOWN  0x01
 #define PANTILT_LEFT  0x02
 #define PANTILT_RIGHT 0x03
+//IOCTL_PANTILT_RELATIVE command
+#define PANTILT_RELATIVE_CONTROL (0x01<<8)
+#define PANTILT_RELATIVE_INDEX 0x0B00
+#define PANTILT_RELATIVE_TIMEOUT 400
+// Payload: commande reset propriétaire
+#define PANTILT_RESET_CMD     0x03
+#define PANTILT_RESET_VALUE   (0x02 << 8)  // Sélecteur propriétaire
+#define PANTILT_RESET_INDEX   0x0B00       // Interface vidéo + classe
+#define PANTILT_RESET_TIMEOUT 400          // Timeout en ms
+// used for IOCTL_STREAMON command
+#define PROBE_LENGTH  26
 
 #define DEV_MINOR       0x00
 #define DEV_MINORS      0x01
