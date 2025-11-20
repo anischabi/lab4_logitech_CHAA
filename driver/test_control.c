@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <sys/ioctl.h>
+#include <stdlib.h>
 #include "usbvideo.h"
 #include "ioctl_cmds.h"
 
@@ -10,6 +11,7 @@
 #define ZOOM_SELECTOR 0x0F00
 #define INDEX 0x0B00
 
+#define FRAME_SIZE 153600   // 320x240 YUYV
 
 int get(int fd, uint8_t request, uint16_t value,
         uint16_t index, uint8_t *buf, uint8_t size)
@@ -59,27 +61,48 @@ int main() {
         perror("open");
         return 1;
     }
+    int fd1 = open("/dev/camera_stream", O_RDWR);
+    if (fd1 < 0) {
+        perror("open");
+        return 1;
+    }
 
-    // /*********************************************
-    //  * 1) PERFORM RESET
-    //  *********************************************/
-    // printf("Sending RESET command...\n");
-
+    /*********************************************
+     * 1) PERFORM RESET
+     *********************************************/
+    printf("Sending RESET command #1 ...\n");
+    if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
+        perror("IOCTL_PANTILT_RESET failed");
+    } else {
+        printf("RESET sent successfully!\n");
+    }
+    sleep(5);
+    
+    // printf("Sending RESET command #2...\n");
     // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
     //     perror("IOCTL_PANTILT_RESET failed");
     // } else {
     //     printf("RESET sent successfully!\n");
     // }
-    // sleep(2);
+    // sleep(5);
     
+    // printf("Sending RESET command #3...\n");
+    // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
+    //     perror("IOCTL_PANTILT_RESET failed");
+    // } else {
+    //     printf("RESET sent successfully!\n");
+    // }
+    // sleep(5);
+    
+
     /*********************************************
-     * 2) SEND PAN_RELATIVE = +4000 (tilt = 0)
-     *********************************************/
+    * PAN / TILT movement tests
+    *********************************************/
     // struct pantilt_relative rel;
+
     // printf("\nSending PAN_RELATIVE +4000...\n");
     // rel.pan = 4000;
     // rel.tilt = 0;
-
     // if (ioctl(fd, IOCTL_PANTILT_RELATIVE, &rel) < 0) {
     //     perror("IOCTL_PANTILT_RELATIVE (pan = +4000) failed");
     // } else {
@@ -87,13 +110,9 @@ int main() {
     // }
     // sleep(2);
 
-    // /*********************************************
-    //  * 3) SEND PAN_RELATIVE = -4000 (tilt = 0)
-    //  *********************************************/
     // printf("\nSending PAN_RELATIVE -4000...\n");
     // rel.pan = -4000;
     // rel.tilt = 0;
-
     // if (ioctl(fd, IOCTL_PANTILT_RELATIVE, &rel) < 0) {
     //     perror("IOCTL_PANTILT_RELATIVE (pan = -4000) failed");
     // } else {
@@ -101,14 +120,9 @@ int main() {
     // }
     // sleep(2);
 
-
-    // /*********************************************
-    //  * 4) SEND tilt_RELATIVE = 1000 (PAN= 0)
-    //  *********************************************/
     // printf("\nSending TILT_RELATIVE = 1000...\n");
     // rel.pan = 0;
     // rel.tilt = 1000;
-
     // if (ioctl(fd, IOCTL_PANTILT_RELATIVE, &rel) < 0) {
     //     perror("IOCTL_PANTILT_RELATIVE (tilt = 1000) failed");
     // } else {
@@ -116,37 +130,26 @@ int main() {
     // }
     // sleep(2);
 
-    // /*********************************************
-    //  * 5) SEND tilt_RELATIVE = -1000 (PAN= 0)
-    //  *********************************************/
     // printf("\nSending TILT_RELATIVE = -1000...\n");
     // rel.pan = 0;
     // rel.tilt = -1000;
-
     // if (ioctl(fd, IOCTL_PANTILT_RELATIVE, &rel) < 0) {
     //     perror("IOCTL_PANTILT_RELATIVE (tilt = -1000) failed");
     // } else {
     //     printf("tilt -1000 command sent!\n");
     // }
-    // sleep(1);
+    // sleep(2);
 
-    // /*********************************************
-    //  * 6) SEND Pan = 4000 and tilt =1000
-    //  *********************************************/
     // printf("\nSending PAN =4000 and TILT = 1000...\n");
     // rel.pan = 4000;
     // rel.tilt = 1000;
-
     // if (ioctl(fd, IOCTL_PANTILT_RELATIVE, &rel) < 0) {
     //     perror("IOCTL_PANTILT_RELATIVE (pan =4000 and tilt = 1000) failed");
     // } else {
     //     printf("pan =4000 and tilt = 1000 command sent!\n");
     // }
-    // sleep(1);
+    // sleep(2);
 
-    // /*********************************************
-    //  * 7) SEND Pan = -4000 and tilt =-1000
-    //  *********************************************/
     // printf("\nSending PAN =-4000 and TILT =-1000 #1...\n");
     // rel.pan = -4000;
     // rel.tilt = -1000;
@@ -155,11 +158,8 @@ int main() {
     // } else {
     //     printf("pan = -4000 and tilt = -1000 command #1 sent!\n");
     // }
-    // sleep(1);
+    // sleep(2);
 
-    /*********************************************
-     * 8) SEND Pan = -4000 and tilt =-1000
-     *********************************************/
     // printf("\nSending PAN =-4000 and TILT =-1000 #2 ...\n");
     // if (ioctl(fd, IOCTL_PANTILT_RELATIVE, &rel) < 0) {
     //     perror("IOCTL_PANTILT_RELATIVE (pan = -4000 and tilt = -1000) #2 failed");
@@ -167,22 +167,54 @@ int main() {
     //     printf("pan =4000 and tilt = 1000 command #2 sent!\n");
     // }
 
+
+    // /*********************************************
+    // * 1) PERFORM RESET
+    // *********************************************/
+    // printf("Sending RESET command #4 ...\n");
+    // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
+    //     perror("IOCTL_PANTILT_RESET failed");
+    // } else {
+    //     printf("RESET sent successfully!\n");
+    // }
+    // sleep(5);
     
+    // printf("Sending RESET command #5...\n");
+    // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
+    //     perror("IOCTL_PANTILT_RESET failed");
+    // } else {
+    //     printf("RESET sent successfully!\n");
+    // }
+    // sleep(5);
+    
+    // printf("Sending RESET command #6...\n");
+    // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
+    //     perror("IOCTL_PANTILT_RESET failed");
+    // } else {
+    //     printf("RESET sent successfully!\n");
+    // }
+    // sleep(5);
+    
+
+    // /*********************************************
+    // * GET/SET gain + pantilt limits
+    // *********************************************/    
     // uint8_t gbuf[2]= {0,0};
     // uint8_t buf[4]= {0,0,0,0};
+    // uint16_t gain = 0; 
 
-    // printf("\n--- GAIN GET_CUR ---\n");
-    // get(fd, GET_CUR,  0x0400, 0x0300, gbuf, 2);
-    // uint16_t gain = gbuf[0] | (gbuf[1] << 8);
-    // printf("gain = %u\n", gain);
-    // sleep(1);
+    // // printf("\n--- GAIN GET_CUR ---\n");
+    // // get(fd, GET_CUR,  0x0400, 0x0300, gbuf, 2);
+    // // uint16_t gain = gbuf[0] | (gbuf[1] << 8);
+    // // printf("gain = %u\n", gain);
+    // // sleep(1);
     
-    // printf("\n--- SET GAIN = 50 ---\n");
-    // gain = 50;
-    // gbuf[0] = gain & 0xFF;
-    // gbuf[1] = (gain >> 8) & 0xFF;
-    // set(fd, SET_CUR,  0x0400, 0x0300, gbuf, 2);
-    // sleep(1);
+    // // printf("\n--- SET GAIN = 50 ---\n");
+    // // gain = 50;
+    // // gbuf[0] = gain & 0xFF;
+    // // gbuf[1] = (gain >> 8) & 0xFF;
+    // // set(fd, SET_CUR,  0x0400, 0x0300, gbuf, 2);
+    // // sleep(1);
 
     // printf("\n--- GAIN GET_CUR ---\n");
     // get(fd, GET_CUR,  0x0400, 0x0300, gbuf, 2);
@@ -210,31 +242,60 @@ int main() {
     // get(fd, GET_DEF, SELECTOR, INDEX, buf, 4);
     // decode_pantilt(buf);
 
-
-    
-
     /*********************************************
-     * NEW PART: STREAMON / STREAMOFF
+     * STREAMON + READ FRAMES + STREAMOFF
      *********************************************/
     printf("\n==============================\n");
     printf("      IOCTL_STREAMON\n");
     printf("==============================\n");
 
-    if (ioctl(fd, IOCTL_STREAMON, NULL) < 0) {
+    if (ioctl(fd1, IOCTL_STREAMON, NULL) < 0) {
         perror("IOCTL_STREAMON failed");
     } else {
-        printf("STREAMON successfully submitted.\n");
+        printf("STREAMON successfully submitted .\n");
     }
 
-    printf("Waiting 3 seconds while URBs run...\n");
-    sleep(3);
+    // printf("Waiting 3 seconds while URBs run...\n");
+    // sleep(3);
+    /*********************************************
+     * HERE IS THE TEACHER'S READ LOOP
+     *********************************************/
+    uint8_t *frame = malloc(FRAME_SIZE);
 
+    printf("Capturing 10 frames...\n");
+
+    for (int i = 0; i < 10; i++) {
+        ssize_t bytes = read(fd1, frame, FRAME_SIZE);
+        if (bytes < 0) {
+            perror("read");
+            break;
+        }
+        printf("Frame %d: %zd bytes\n", i, bytes);
+
+        /* Save each frame to a raw file */
+        char filename[64];
+        sprintf(filename, "frame_%02d.yuyv", i);
+
+        FILE *fp = fopen(filename, "wb");
+        if (fp) {
+            fwrite(frame, 1, bytes, fp);
+            fclose(fp);
+            printf("  -> Saved %s\n", filename);
+        } else {
+            perror("fopen");
+        }
+
+
+    }
+
+    free(frame);
+    /*********************************************/
 
     printf("\n==============================\n");
     printf("      IOCTL_STREAMOFF\n");
     printf("==============================\n");
 
-    if (ioctl(fd, IOCTL_STREAMOFF, NULL) < 0) {
+    if (ioctl(fd1, IOCTL_STREAMOFF, NULL) < 0) {
         perror("IOCTL_STREAMOFF failed");
     } else {
         printf("STREAMOFF done.\n");
@@ -242,5 +303,6 @@ int main() {
 
         
     close(fd);
+    close(fd1);
     return 0;
 }

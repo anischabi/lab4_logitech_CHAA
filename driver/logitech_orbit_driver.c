@@ -593,6 +593,9 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
           retval = -ENOMEM;
           break;
         }
+
+
+        /* ======= UVC MANDATORY PROBE+COMMIT SEQUENCE ======= */
         /* 2) Envoyer la requête de type GET_CUR VS_PROBE_CONTROL */
         retval = usb_control_msg(
             udev,
@@ -605,7 +608,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
             PROBE_LENGTH,                                        // wLength = 26
             5000                                              // timeout en ms
         );
-
+    
         if (retval < 0) {
           printk(KERN_ERR "ELE784 -> IOCTL_STREAMON : usb_control_msg(GET_CUR/PROBE) failed, retval=%d\n",retval);
           if(data){
@@ -615,29 +618,112 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
           break;
         }
 
+        /* ========= DEBUG: show what camera proposes ========= */
+        {
+            u32 dwMaxVideoFrameSize =
+                ((u32)data[21] << 24) |
+                ((u32)data[20] << 16) |
+                ((u32)data[19] << 8 ) |
+                ((u32)data[18] << 0 );
+
+            printk(KERN_INFO
+                "ELE784 -> PROBE(before force): bFormatIndex=%u bFrameIndex=%u dwMaxVideoFrameSize=%u\n",
+                data[2], data[3], dwMaxVideoFrameSize);
+        }
+        /* ========= FORCE YUY2 320x240 (correct UVC values) ========= */
+        data[2] = 1;   // FORMAT_UNCOMPRESSED (YUY2)
+        data[3] = 6;   // FRAME_UNCOMPRESSED @ 320x240
+        /* 2) SET_CUR(PROBE) – send the probe back to device */
+        retval = usb_control_msg(
+            udev,
+            usb_sndctrlpipe(udev, 0),
+            SET_CUR,
+            USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+            VS_PROBE_CONTROL << 8,
+            1,                      // Streaming interface
+            data,
+            PROBE_LENGTH,
+            5000);
+        if (retval < 0) {
+            printk(KERN_ERR "STREAMON: SET_CUR(PROBE) failed (%d)\n", retval);
+            kfree(data);
+            data = NULL;
+            break;
+        }
+
+        /* 3) GET_CUR(PROBE) AGAIN – device adjusts values */
+        retval = usb_control_msg(
+            udev,
+            usb_rcvctrlpipe(udev, 0),
+            GET_CUR,
+            USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+            VS_PROBE_CONTROL << 8,
+            1,
+            data,
+            PROBE_LENGTH,
+            5000);
+        if (retval < 0) {
+            printk(KERN_ERR "STREAMON: second GET_CUR(PROBE) failed (%d)\n", retval);
+            kfree(data);
+            data = NULL;
+            break;
+        }
+        /* Debug: after forcing and second GET_CUR(PROBE) */
+        {
+            u32 size =
+                ((u32)data[21] << 24) |
+                ((u32)data[20] << 16) |
+                ((u32)data[19] << 8)  |
+                ((u32)data[18] << 0);
+
+            printk(KERN_INFO "ELE784 -> PROBE(after force): "
+                  "bFormatIndex=%u bFrameIndex=%u dwMaxVideoFrameSize=%u\n",
+                  data[2], data[3], size);
+        }
+        /* 4) SET_CUR(COMMIT) – commit the settings */
+        retval = usb_control_msg(
+            udev,
+            usb_sndctrlpipe(udev, 0),
+            SET_CUR,
+            USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+            VS_COMMIT_CONTROL << 8,
+            1,
+            data,
+            PROBE_LENGTH,
+            5000);
+        if (retval < 0) {
+            printk(KERN_ERR "STREAMON: SET_CUR(COMMIT) failed (%d)\n", retval);
+            kfree(data);
+            data = NULL;
+            break;
+        }
+
+        /* ======= END PROBE/COMMIT ======= */
+
         uint32_t bandwidth, psize, size, npackets, urb_size;
         struct usb_host_endpoint *ep = NULL;
         struct usb_host_interface *alts;
         int	   best_altset;
 
         /* Use VIDEO STREAMING interface #1, NOT the control interface */
-        struct usb_interface *vs_intf = usb_ifnum_to_if(udev, 1);
-        if (!vs_intf) {
-          printk(KERN_ERR "Could not get VS interface #1\n");
-          retval = -ENODEV;
-          break;
-        }
-        printk(KERN_INFO, "ELE784 -> IOCTL_STREAMON: VS interface #1 has %u altsettings\n",vs_intf->num_altsetting);
+        // struct usb_interface *vs_intf = usb_ifnum_to_if(udev, 1);
+        // if (!vs_intf) {
+        //   printk(KERN_ERR "Could not get VS interface #1\n");
+        //   retval = -ENODEV;
+        //   break;
+        // }
+        // printk(KERN_INFO "ELE784 -> IOCTL_STREAMON: VS interface #1 has %u altsettings\n",vs_intf->num_altsetting);
+        printk(KERN_INFO "ELE784 -> IOCTL_STREAMON: VS interface #1 has %u altsettings\n",interface->num_altsetting);
         // À partir des données de configurations obtenues, détermine la Bande Passante et la taille des transferts :	  
         bandwidth = (((uint32_t) data[25]) << 24) | (((uint32_t) data[24]) << 16) | (((uint32_t) data[23]) << 8) | (((uint32_t) data[22]) << 0);
         size      = (((uint32_t) data[21]) << 24) | (((uint32_t) data[20]) << 16) | (((uint32_t) data[19]) << 8) | (((uint32_t) data[18]) << 0);
 
         // Selon la Bande Passante et la taille des Paquets, trouve la meilleure "Interface Alternative" a utiliser (dépend de la résolution Video choisie)
         // Note :	Chacune de ces "Interfaces Alternatives" n'a qu'un seul Endpoint...donc on conserve l'info sur ce Endpoint.
-        // for (best_altset = 0; best_altset < interface->num_altsetting; best_altset++) {
-        //   alts = &(interface->altsetting[best_altset]);
-        for (best_altset = 0; best_altset < vs_intf->num_altsetting; best_altset++) {
-            alts = &vs_intf->altsetting[best_altset];
+        for (best_altset = 0; best_altset < interface->num_altsetting; best_altset++) {
+          alts = &(interface->altsetting[best_altset]);
+        // for (best_altset = 0; best_altset < vs_intf->num_altsetting; best_altset++) {
+        //     alts = &vs_intf->altsetting[best_altset];
           if (alts->desc.bNumEndpoints < 1)
             continue;
           ep = &(alts->endpoint[0]);
@@ -674,11 +760,17 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
         npackets = ((size % psize) > 0) ? (size/psize + 1) : (size/psize);
         npackets = (npackets > MAX_PACKETS) ? MAX_PACKETS : npackets;
         urb_size = psize*npackets;
-
         // Et on alloue dynamiquement (obligatoire) le tampon où seront placées les données récoltées par les Urbs.   		
         driver->frame_buf.Data = kmalloc(urb_size, GFP_KERNEL);
+        /****************************************************************
+         * IMPORTANT FIX:
+         *  - frame_buf.Data must hold a FULL FRAME (size), e.g. 153600 bytes
+         *  - URBs use urb_size (psize * npackets) as their transfer buffer length
+         ***************************************************************/
+        // driver->frame_buf.Data = kmalloc(size, GFP_KERNEL);
         if (driver->frame_buf.Data == NULL) {
-          printk(KERN_WARNING "ELE784 -> IOCTL_STREAMON : No memory for URB buffer[0]");
+          // printk(KERN_WARNING "ELE784 -> IOCTL_STREAMON : No memory for URB buffer[0]");
+          printk(KERN_WARNING "ELE784 -> IOCTL_STREAMON : No memory for frame buffer (%u bytes)\n", size);
           if(data){
             kfree(data);
             data =NULL;
@@ -686,6 +778,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
           retval = -ENOMEM;
           break;
         }
+        // driver->frame_buf.MaxLength = size;
         driver->frame_buf.MaxLength = urb_size;
         driver->frame_buf.BytesUsed = 0; 
         driver->frame_buf.LastFID = -1;
@@ -888,26 +981,77 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
   return retval;
 }
 
-// Read function for video streaming device
-ssize_t ele784_read(struct file *file, char __user *buffer, size_t count, loff_t *f_pos) {
-/*******************************************************************************
-	Ici, il faut :
-	
-		1 -	Lever le drapeau de "Status" BUF_STREAM_READ dans le "frame_buf"
-			pour mettre le Video Streaming en mode lecture et attendre le début
-			d'un nouveau Frame.
-			
-		2 -	Répéter ce qui suit jusqu'à la détection de la fin du Frame :
-					( Drapeau BUF_STREAM_EOF dans Status )
+//new try
+ssize_t ele784_read(struct file *file, char __user *buffer, size_t count, loff_t *f_pos) 
+{
+    
+  struct orbit_driver *driver = file->private_data;
+  struct driver_buffer *fb;
+  size_t total_copied = 0;
+  size_t bytes_to_copy;
 
-				a -	Attend la fin d'un Urb.
+  /* Sanity check */
+  if (!driver)
+    return -ENODEV;
 
-				b -	Récupère les données produites par ce Urb.
 
-				c -	Transmet les données récupérées à l'usager.
-				
-		3 -	Baisse tous les drapeaux dans Status et retourne le nombre total
-			de bytes qui ont été transmit à l'usager.
-*******************************************************************************/
-  return 0;
+  fb = &driver->frame_buf;
+
+  /******************************************************
+  * 1) Mark buffer as "reading"
+  ******************************************************/
+  fb->Status |= BUF_STREAM_READ;
+
+  /******************************************************
+  * 2) Wait for a new frame to start (FID toggled)
+  ******************************************************/
+  if (wait_for_completion_interruptible(&fb->new_frame_start)) {
+    fb->Status &= ~BUF_STREAM_READ;
+    return -ERESTARTSYS;
+  }
+
+  /******************************************************
+  * 3) Loop until the callback marks BUF_STREAM_EOF
+  ******************************************************/
+  while (!(fb->Status & BUF_STREAM_EOF)) {
+
+    /* a) Wait for URB completion */
+    if (wait_for_completion_interruptible(&fb->urb_completion)) {
+      fb->Status &= ~BUF_STREAM_READ;
+      return -ERESTARTSYS;
+    }
+
+    /* b) Copy data from kernel buffer to userspace */
+    bytes_to_copy = min_t(size_t, fb->BytesUsed, count);
+
+    if (bytes_to_copy > 0) {
+      if (copy_to_user(buffer, fb->Data, bytes_to_copy)) {
+        fb->Status &= ~BUF_STREAM_READ;
+        fb->Status &= ~BUF_STREAM_EOF;
+        return -EFAULT;
+      }
+
+      buffer += bytes_to_copy;
+      count -= bytes_to_copy;
+      total_copied += bytes_to_copy;
+    }
+
+    /* c) Reset completion for next URB */
+    reinit_completion(&fb->urb_completion);
+
+    /* d) Reset bytes — next URB refills Data[] */
+    fb->BytesUsed = 0;
+  }
+
+  /******************************************************
+   * 4) Clear flags for next call
+   ******************************************************/
+  fb->Status &= ~BUF_STREAM_READ;
+  fb->Status &= ~BUF_STREAM_EOF;
+
+  /******************************************************
+   * 5) Return total copied bytes
+   ******************************************************/
+  return total_copied;
+
 }
