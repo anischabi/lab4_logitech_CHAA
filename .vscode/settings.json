@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "ioctl_cmds.h": "c",
+        "logitech_orbit_driver.h": "c",
+        "usbvideo.h": "c"
+    }
+}
