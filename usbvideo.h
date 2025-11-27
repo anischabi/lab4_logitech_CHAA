@@ -160,8 +160,6 @@
 // VideoStreaming Interface Control Selectors
 // (USB_Video_Class_1.1.pdf, A.9.7 VideoStreaming Interface Control Selectors)
 #define VS_CONTROL_UNDEFINED                       0x00
-#define VS_PROBE_CONTROL                           0x01
-#define VS_COMMIT_CONTROL                     	   0x02
 #define VS_STILL_PROBE_CONTROL               	   0x03
 #define VS_STILL_COMMIT_CONTROL                    0x04
 #define VS_STILL_IMAGE_TRIGGER_CONTROL             0x05

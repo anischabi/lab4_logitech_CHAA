@@ -20,42 +20,28 @@
 
 #include "callback.h"
 #include "ioctl_cmds.h"
-#include "usbvideo.h"
+#include "usb_structs.h"
+
 
 MODULE_LICENSE("GPL");
 
-//URB_COUNT   : Number of USB Request Blocks (URBs) allocated for streaming.
-//MAX_PACKETS : Maximum number of packets per URB.
-#define URB_COUNT   5
-#define MAX_PACKETS 32
+#define URB_COUNT      1
+// #define URB_COUNT      8
+#define MAX_PACKETS    128
+// #define MAX_PACKETS    256
 
-#define PANTILT_UP    0x00
-#define PANTILT_DOWN  0x01
-#define PANTILT_LEFT  0x02
-#define PANTILT_RIGHT 0x03
-//IOCTL_PANTILT_RELATIVE command
-#define PANTILT_RELATIVE_CONTROL (0x01<<8)
-#define PANTILT_RELATIVE_INDEX 0x0B00
-#define PANTILT_RELATIVE_TIMEOUT 400
-// Payload: commande reset propriétaire
-#define PANTILT_RESET_CMD     0x03
-#define PANTILT_RESET_VALUE   (0x02 << 8)  // Sélecteur propriétaire
-#define PANTILT_RESET_INDEX   0x0B00       // Interface vidéo + classe
-#define PANTILT_RESET_TIMEOUT 400          // Timeout en ms
-// used for IOCTL_STREAMON command
-#define PROBE_LENGTH  26
+#define FORMAT_INDEX_UNCOMPRESSED_YUYV 1
+#define FRAME_INDEX_320x240            6
+#define FRAME_INDEX_160x120            3
+#define FRAME_INTERVAL_30FPS        333333  // in 100ns units
+#define  FRAME_SIZE_320x240         153600  // 320*240*2
+#define  FRAME_SIZE_160x120          38400  // 160*120*2
+#define PAYLOAD_SIZE_3060              3060  // from lsusb
+#define CLOCK_FREQUENCY_300MHZ   300000000  // 300 MHz
+
 
 #define DEV_MINOR       0x00
 #define DEV_MINORS      0x01
-
-
-#define GET_CUR  0x81
-#define GET_MIN  0x82
-#define GET_MAX  0x83
-#define GET_RES  0x84
-#define GET_DEF  0x87
-#define GET_INFO 0x86
-
 //tableau ou chaque element est une struct usb_device_id.
 // static symbol cannot be accessed from other .c files : it is private to this compilation unit.
 //Because it’s static:

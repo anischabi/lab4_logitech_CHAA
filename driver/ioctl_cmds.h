@@ -23,6 +23,7 @@ struct usb_request {
   uint8_t  *data; // pointer to user buffer
 };
 
+// Structure for proprietaire relative pan/tilt command
 struct pantilt_relative {
   int16_t pan;   // signed 16-bit, little endian
   int16_t tilt;  // signed 16-bit, little endian

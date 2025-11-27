@@ -4,14 +4,10 @@
 #include <stdint.h>
 #include <sys/ioctl.h>
 #include <stdlib.h>
-#include "usbvideo.h"
-#include "ioctl_cmds.h"
+#include "../driver/ioctl_cmds.h"
+#define TIMEOUT 400
+#define FRAME_MAX_SIZE   200000   // big enough for 320x240 or 640x480 YUYV
 
-#define SELECTOR 0x0100
-#define ZOOM_SELECTOR 0x0F00
-#define INDEX 0x0B00
-
-#define FRAME_SIZE 153600   // 320x240 YUYV
 
 int get(int fd, uint8_t request, uint16_t value,
         uint16_t index, uint8_t *buf, uint8_t size)
@@ -21,7 +17,7 @@ int get(int fd, uint8_t request, uint16_t value,
     req.data_size = size;
     req.value     = value;        // full 16-bit wValue
     req.index     = index;        // full 16-bit wIndex
-    req.timeout   = 300;          // ms
+    req.timeout   = TIMEOUT;          // ms
     req.data      = buf;          // pointer where the kernel writes the result
 
     if (ioctl(fd, IOCTL_GET, &req) < 0) {
@@ -38,7 +34,7 @@ void set(int fd, uint8_t request, uint16_t value, uint16_t index,
     rq.request   = request;
     rq.value     = value;
     rq.index     = index;
-    rq.timeout   = 300;
+    rq.timeout   = TIMEOUT;
     rq.data_size = size;
     rq.data      = payload;
 
@@ -78,21 +74,6 @@ int main() {
     }
     sleep(5);
     
-    // printf("Sending RESET command #2...\n");
-    // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
-    //     perror("IOCTL_PANTILT_RESET failed");
-    // } else {
-    //     printf("RESET sent successfully!\n");
-    // }
-    // sleep(5);
-    
-    // printf("Sending RESET command #3...\n");
-    // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
-    //     perror("IOCTL_PANTILT_RESET failed");
-    // } else {
-    //     printf("RESET sent successfully!\n");
-    // }
-    // sleep(5);
     
 
     /*********************************************
@@ -179,29 +160,19 @@ int main() {
     // }
     // sleep(5);
     
-    // printf("Sending RESET command #5...\n");
-    // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
-    //     perror("IOCTL_PANTILT_RESET failed");
-    // } else {
-    //     printf("RESET sent successfully!\n");
-    // }
-    // sleep(5);
-    
-    // printf("Sending RESET command #6...\n");
-    // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
-    //     perror("IOCTL_PANTILT_RESET failed");
-    // } else {
-    //     printf("RESET sent successfully!\n");
-    // }
-    // sleep(5);
-    
 
+
+    // TO BE REWRITED 
     // /*********************************************
     // * GET/SET gain + pantilt limits
     // *********************************************/    
     // uint8_t gbuf[2]= {0,0};
     // uint8_t buf[4]= {0,0,0,0};
     // uint16_t gain = 0; 
+
+    //to be tested later why value and index are switching from 0x0400 and 0x0300
+    // to SELECTOR and INDEX
+    // INDEX IS PANTILT_INDEX 
 
     // // printf("\n--- GAIN GET_CUR ---\n");
     // // get(fd, GET_CUR,  0x0400, 0x0300, gbuf, 2);
@@ -256,39 +227,40 @@ int main() {
     }
 
     // printf("Waiting 3 seconds while URBs run...\n");
-    // sleep(3);
-    /*********************************************
-     * HERE IS THE TEACHER'S READ LOOP
+    sleep(3);
+  /*********************************************
+     * READ N FRAMES
      *********************************************/
-    uint8_t *frame = malloc(FRAME_SIZE);
+    const int NUM_FRAMES = 10;
+    uint8_t framebuf[FRAME_MAX_SIZE];
 
-    printf("Capturing 10 frames...\n");
+    for (int i = 0; i < NUM_FRAMES; i++)
+    {
+        printf("Reading frame %d...\n", i);
 
-    for (int i = 0; i < 10; i++) {
-        ssize_t bytes = read(fd1, frame, FRAME_SIZE);
-        if (bytes < 0) {
-            perror("read");
+        ssize_t n = read(fd1, framebuf, FRAME_MAX_SIZE);
+        if (n < 0) {
+            perror("read failed");
             break;
         }
-        printf("Frame %d: %zd bytes\n", i, bytes);
 
-        /* Save each frame to a raw file */
-        char filename[64];
-        sprintf(filename, "frame_%02d.yuyv", i);
+        printf("  -> Received %ld bytes\n", n);
 
-        FILE *fp = fopen(filename, "wb");
-        if (fp) {
-            fwrite(frame, 1, bytes, fp);
-            fclose(fp);
-            printf("  -> Saved %s\n", filename);
-        } else {
+        char fname[64];
+        snprintf(fname, sizeof(fname), "frame_%02d.yuyv", i);
+
+        FILE *f = fopen(fname, "wb");
+        if (!f) {
             perror("fopen");
+            break;
         }
 
+        fwrite(framebuf, 1, n, f);
+        fclose(f);
 
+        printf("  -> Saved %s\n", fname);
     }
 
-    free(frame);
     /*********************************************/
 
     printf("\n==============================\n");
