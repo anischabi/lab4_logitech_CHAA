@@ -7,6 +7,7 @@
 #include "../driver/ioctl_cmds.h"
 #define TIMEOUT 400
 #define FRAME_MAX_SIZE   200000   // big enough for 320x240 or 640x480 YUYV
+#define  FRAME_SIZE_160x120          38400
 
 
 int get(int fd, uint8_t request, uint16_t value,
@@ -64,15 +65,15 @@ int main() {
     }
 
     /*********************************************
-     * 1) PERFORM RESET
-     *********************************************/
-    printf("Sending RESET command #1 ...\n");
-    if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
-        perror("IOCTL_PANTILT_RESET failed");
-    } else {
-        printf("RESET sent successfully!\n");
-    }
-    sleep(5);
+    * 1) PERFORM RESET
+    *********************************************/
+    // printf("Sending RESET command #1 ...\n");
+    // if (ioctl(fd, IOCTL_PANTILT_RESET, 0) < 0) {
+    //     perror("IOCTL_PANTILT_RESET failed");
+    // } else {
+    //     printf("RESET sent successfully!\n");
+    // }
+    // sleep(5);
     
     
 
@@ -227,39 +228,70 @@ int main() {
     }
 
     // printf("Waiting 3 seconds while URBs run...\n");
-    sleep(3);
+    // sleep(3);
   /*********************************************
      * READ N FRAMES
      *********************************************/
     const int NUM_FRAMES = 10;
-    uint8_t framebuf[FRAME_MAX_SIZE];
+    uint8_t frame_buffer[FRAME_MAX_SIZE];
+    int frame_sizes[NUM_FRAMES];
+    int i, ret;
 
-    for (int i = 0; i < NUM_FRAMES; i++)
-    {
-        printf("Reading frame %d...\n", i);
-
-        ssize_t n = read(fd1, framebuf, FRAME_MAX_SIZE);
-        if (n < 0) {
-            perror("read failed");
-            break;
+    // Read all frames as fast as possible - NO PRINTS
+    for (i = 0; i < NUM_FRAMES; i++) {
+        ret = read(fd1, frame_buffer, FRAME_SIZE_160x120);
+        frame_sizes[i] = ret;
+        
+        // Save complete frames immediately
+        if (ret == FRAME_SIZE_160x120) {
+            char filename[64];
+            sprintf(filename, "frame_%02d.yuyv", i);
+            FILE *fp = fopen(filename, "wb");
+            if (fp) {
+                fwrite(frame_buffer, 1, ret, fp);
+                fclose(fp);
+            }
         }
-
-        printf("  -> Received %ld bytes\n", n);
-
-        char fname[64];
-        snprintf(fname, sizeof(fname), "frame_%02d.yuyv", i);
-
-        FILE *f = fopen(fname, "wb");
-        if (!f) {
-            perror("fopen");
-            break;
-        }
-
-        fwrite(framebuf, 1, n, f);
-        fclose(f);
-
-        printf("  -> Saved %s\n", fname);
     }
+
+    // Print all results AFTER reading
+    printf("\n==============================\n");
+    printf("      FRAME SIZES\n");
+    printf("==============================\n");
+    for (i = 0; i < NUM_FRAMES; i++) {
+        if (frame_sizes[i] == FRAME_SIZE_160x120) {
+            printf("Frame %d: %d bytes ✓ (saved)\n", i, frame_sizes[i]);
+        } else {
+            printf("Frame %d: %d bytes ✗ (incomplete)\n", i, frame_sizes[i]);
+        }
+    }
+
+    // for (int i = 0; i < NUM_FRAMES; i++)
+    // {
+    //     printf("Reading frame %d...\n", i);
+
+    //     ssize_t n = read(fd1, framebuf, FRAME_MAX_SIZE);
+    //     if (n < 0) {
+    //         perror("read failed");
+    //         break;
+    //     }
+
+    //     printf("  -> Received %ld bytes\n", n);
+
+    //     char fname[64];
+    //     snprintf(fname, sizeof(fname), "frame_%02d.yuyv", i);
+
+    //     FILE *f = fopen(fname, "wb");
+    //     if (!f) {
+    //         perror("fopen");
+    //         break;
+    //     }
+
+    //     fwrite(framebuf, 1, n, f);
+    //     fclose(f);
+
+    //     printf("  -> Saved %s\n", fname);
+    // }
 
     /*********************************************/
 

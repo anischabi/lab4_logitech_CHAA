@@ -807,11 +807,17 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
         driver->frame_buf.MaxLength = size;
         driver->frame_buf.BytesUsed = 0; 
         driver->frame_buf.LastFID = -1;
+        driver->frame_buf.Status = 0;  // <-- IMPORTANT: Initialize to 0
+        driver->frame_buf.LastFID = -1; // <-- Initialize ONCE during STREAMON
+
 
         // On a besoin d'un mécanisme de synchro pour la détection du début d'un "Frame" (une image) et la détection de la fin de chaque Urb.
         init_completion(&(driver->frame_buf.new_frame_start));
         init_completion(&(driver->frame_buf.urb_completion));
             
+
+        driver->frame_buf.Status |= BUF_STREAM_READ;  // <-- ADD THIS LINE!
+    
         // Ici, on rend "courante" l'interface alternative choisie comme étant la meilleure.
         retval = usb_set_interface(udev, 1, best_altset); //Important pour mettre la camera dans le bon mode
         if (retval < 0) {
@@ -992,6 +998,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
 }
 
 
+//this is the committed version of ele784_read()
 ssize_t ele784_read(struct file *file,char __user *buffer,size_t count,loff_t *f_pos)
 {
     struct orbit_driver *dev = file->private_data;
@@ -1004,28 +1011,18 @@ ssize_t ele784_read(struct file *file,char __user *buffer,size_t count,loff_t *f
     fb = &dev->frame_buf;
 
     // =====================================================
-    // RESET EVERYTHING BEFORE STARTING A NEW READ()
+    // CRITICAL FIX: Wait for FID toggle BEFORE resetting
     // =====================================================
-    fb->Status &= ~(BUF_STREAM_FRAME_READ | BUF_STREAM_EOF);
-    fb->BytesUsed = 0;
-    fb->LastFID   = -1;
-
+    
+    // Wait for the START of a new frame (FID toggle)
+    if (wait_for_completion_interruptible(&fb->new_frame_start)) {
+        return -ERESTARTSYS;
+    }
+    // NOW reset for this frame (callback has already started filling buffer)
+    // But DON'T reset LastFID - let callback track it across frames
     reinit_completion(&fb->new_frame_start);
     reinit_completion(&fb->urb_completion);
 
-    // =====================================================
-    // Tell callback: "start feeding me frames"
-    // =====================================================
-    fb->Status |= BUF_STREAM_READ;
-
-    // =====================================================
-    // Wait for FIRST PACKET OF A NEW FRAME (FID toggle)
-    // =====================================================
-    if (wait_for_completion_interruptible(&fb->new_frame_start)) {
-        fb->Status &= ~BUF_STREAM_READ;
-        return -ERESTARTSYS;
-    }
-    // reinit_completion(&fb->new_frame_start);
 
     // =====================================================
     // Wait until callback signals EOF of this frame
@@ -1050,13 +1047,14 @@ ssize_t ele784_read(struct file *file,char __user *buffer,size_t count,loff_t *f
       fb->BytesUsed = 0;
       return -EFAULT;
     }
+    printk(KERN_INFO "ELE784 -> read() returning %zu bytes\n", bytes_to_copy);
 
     // =====================================================
     // CLEAN UP FOR NEXT READ()
     // =====================================================
     // fb->Status &= ~(BUF_STREAM_READ | BUF_STREAM_EOF | BUF_STREAM_FRAME_READ);
-    fb->Status &= ~(BUF_STREAM_EOF | BUF_STREAM_FRAME_READ);
-    fb->BytesUsed = 0;
+    // fb->Status &= ~(BUF_STREAM_EOF | BUF_STREAM_FRAME_READ);
+    fb->Status &= ~BUF_STREAM_EOF;
 
     return bytes_to_copy;
 }

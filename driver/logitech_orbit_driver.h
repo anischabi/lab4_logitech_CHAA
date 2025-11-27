@@ -25,8 +25,8 @@
 
 MODULE_LICENSE("GPL");
 
-#define URB_COUNT      1
-// #define URB_COUNT      8
+// #define URB_COUNT      1
+#define URB_COUNT      8
 #define MAX_PACKETS    128
 // #define MAX_PACKETS    256
 

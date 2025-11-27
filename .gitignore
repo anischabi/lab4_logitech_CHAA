@@ -7,4 +7,5 @@
 *.o
 *.txt
 test_control
+stream_interface
 *yuyv
