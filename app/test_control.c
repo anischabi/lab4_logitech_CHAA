@@ -6,8 +6,9 @@
 #include <stdlib.h>
 #include "../driver/ioctl_cmds.h"
 #define TIMEOUT 400
-#define FRAME_MAX_SIZE   200000   // big enough for 320x240 or 640x480 YUYV
+#define FRAME_MAX_SIZE   (640*480*2)   // big enough for 320x240 or 640x480 YUYV
 #define  FRAME_SIZE_160x120          38400
+#define FRAME_SIZE_640x480          (640*480*2)  // 640*480*2
 
 
 int get(int fd, uint8_t request, uint16_t value,
@@ -233,17 +234,17 @@ int main() {
      * READ N FRAMES
      *********************************************/
     const int NUM_FRAMES = 10;
-    uint8_t frame_buffer[FRAME_MAX_SIZE];
+    uint8_t frame_buffer[FRAME_SIZE_640x480];
     int frame_sizes[NUM_FRAMES];
     int i, ret;
 
     // Read all frames as fast as possible - NO PRINTS
     for (i = 0; i < NUM_FRAMES; i++) {
-        ret = read(fd1, frame_buffer, FRAME_SIZE_160x120);
+        ret = read(fd1, frame_buffer, FRAME_SIZE_640x480);
         frame_sizes[i] = ret;
         
         // Save complete frames immediately
-        if (ret == FRAME_SIZE_160x120) {
+        if (ret == FRAME_SIZE_640x480) {
             char filename[64];
             sprintf(filename, "frame_%02d.yuyv", i);
             FILE *fp = fopen(filename, "wb");
@@ -259,7 +260,7 @@ int main() {
     printf("      FRAME SIZES\n");
     printf("==============================\n");
     for (i = 0; i < NUM_FRAMES; i++) {
-        if (frame_sizes[i] == FRAME_SIZE_160x120) {
+        if (frame_sizes[i] == FRAME_SIZE_640x480) {
             printf("Frame %d: %d bytes ✓ (saved)\n", i, frame_sizes[i]);
         } else {
             printf("Frame %d: %d bytes ✗ (incomplete)\n", i, frame_sizes[i]);

@@ -8,7 +8,7 @@
 #define BUF_STREAM_EOF              (1 << 0)
 
 // Expected frame size for validation
-#define EXPECTED_FRAME_SIZE         38400
+#define EXPECTED_FRAME_SIZE         (640*480*2)  // 640*480*2
 
 
 // Structure de Buffer du Pilote
@@ -38,8 +38,12 @@ static void complete_callback(struct urb *urb) {
 
     // Debug counters
     static int packet_count = 0;
-    static int frame_count = 0;
+    // static int frame_count = 0;
     static int abandoned_count = 0;
+
+    // Debug counters - KEEP these for FPS tracking
+    static int frame_count = 0;
+    static unsigned long last_time = 0;
     
     // Only process successful URBs or resubmit on recoverable errors
     if (urb->status != 0) {
@@ -76,17 +80,17 @@ static void complete_callback(struct urb *urb) {
         
         // Debug: Log important packets
         packet_count++;
-        if (has_eof || has_fid_toggle || packet_count <= 50) {
-            printk(KERN_INFO "ELE784 -> [Pkt %d] FID=%d LastFID=%d Toggle=%d EOF=%d Len=%u BytesUsed=%u Status=0x%02x\n",
-                   packet_count,
-                   currentFID,
-                   buffer->LastFID,
-                   has_fid_toggle,
-                   has_eof,
-                   UrbPacketLength,
-                   buffer->BytesUsed,
-                   buffer->Status);
-        }
+        // if (has_eof || has_fid_toggle || packet_count <= 50) {
+        //     printk(KERN_INFO "ELE784 -> [Pkt %d] FID=%d LastFID=%d Toggle=%d EOF=%d Len=%u BytesUsed=%u Status=0x%02x\n",
+        //            packet_count,
+        //            currentFID,
+        //            buffer->LastFID,
+        //            has_fid_toggle,
+        //            has_eof,
+        //            UrbPacketLength,
+        //            buffer->BytesUsed,
+        //            buffer->Status);
+        // }
 
         // =====================================================
         // Handle packets with BOTH FID toggle AND EOF
@@ -99,14 +103,14 @@ static void complete_callback(struct urb *urb) {
             if (buffer->Status & BUF_STREAM_FRAME_READ) {
                 UrbPacketLength -= UrbPacketData[0];
                 MaxBufLength = buffer->MaxLength - buffer->BytesUsed;
-                printk(KERN_INFO "ELE784 -> [CASE 1] Payload=%u, Space=%u\n", UrbPacketLength, MaxBufLength);
+                // printk(KERN_INFO "ELE784 -> [CASE 1] Payload=%u, Space=%u\n", UrbPacketLength, MaxBufLength);
                 
                 if (MaxBufLength > 0) {
                     nbytes = min(UrbPacketLength, MaxBufLength);
                     BufData = buffer->Data + buffer->BytesUsed;
                     memcpy(BufData, UrbPacketData + UrbPacketData[0], nbytes);
                     buffer->BytesUsed += nbytes;
-                    printk(KERN_INFO "ELE784 -> [CASE 1] Copied %u bytes, BytesUsed now %u\n", nbytes, buffer->BytesUsed);
+                    // printk(KERN_INFO "ELE784 -> [CASE 1] Copied %u bytes, BytesUsed now %u\n", nbytes, buffer->BytesUsed);
                 }
                 
                 // VALIDATE frame size before marking complete
@@ -118,19 +122,28 @@ static void complete_callback(struct urb *urb) {
                     buffer->Status &= ~BUF_STREAM_FRAME_READ;
                     
                     frame_count++;
-                    printk(KERN_INFO "ELE784 -> [CASE 1] Frame #%d COMPLETE: %u bytes, Status=0x%02x\n",
-                           frame_count, buffer->BytesUsed, buffer->Status);
+                    // printk(KERN_INFO "ELE784 -> [CASE 1] Frame #%d COMPLETE: %u bytes, Status=0x%02x\n",
+                    //        frame_count, buffer->BytesUsed, buffer->Status);
+                    // FPS counter - print every second
+                    if (frame_count % 30 == 0) {
+                        unsigned long now = jiffies;
+                        if (last_time != 0) {
+                            unsigned long diff = (now - last_time) * 1000 / HZ;
+                            printk(KERN_INFO "ELE784 -> 30 frames in %lu ms (~%lu FPS)\n", diff, 30000 / diff);
+                        }
+                        last_time = now;
+                    }
                     complete(&(buffer->urb_completion));
                 } else {
                     // Frame is NOT complete - ignore premature EOF
-                    printk(KERN_WARNING "ELE784 -> [CASE 1] IGNORING premature EOF (FID+EOF): %u/%u bytes\n",
-                           buffer->BytesUsed, EXPECTED_FRAME_SIZE);
+                    // printk(KERN_WARNING "ELE784 -> [CASE 1] IGNORING premature EOF (FID+EOF): %u/%u bytes\n",
+                    //        buffer->BytesUsed, EXPECTED_FRAME_SIZE);
                 }
             }
             
             // Update LastFID regardless
             buffer->LastFID = currentFID;
-            printk(KERN_INFO "ELE784 -> [CASE 1] Updated LastFID to %d\n", currentFID);
+            // printk(KERN_INFO "ELE784 -> [CASE 1] Updated LastFID to %d\n", currentFID);
             
             // Skip further processing
             continue;
@@ -141,13 +154,13 @@ static void complete_callback(struct urb *urb) {
         // CRITICAL: If we're currently capturing, abandon it!
         // =====================================================
         if (has_fid_toggle) {
-            printk(KERN_INFO "ELE784 -> [CASE 2] FID toggle detected: %d -> %d\n", buffer->LastFID, currentFID);
+            // printk(KERN_INFO "ELE784 -> [CASE 2] FID toggle detected: %d -> %d\n", buffer->LastFID, currentFID);
 
             // If we were capturing a frame, abandon it (FID changed = new frame started)
             if (buffer->Status & BUF_STREAM_FRAME_READ) {
                 abandoned_count++;
-                printk(KERN_WARNING "ELE784 -> [CASE 2] ABANDONING incomplete frame: %u bytes (abandoned count: %d)\n",
-                       buffer->BytesUsed, abandoned_count);
+                // printk(KERN_WARNING "ELE784 -> [CASE 2] ABANDONING incomplete frame: %u bytes (abandoned count: %d)\n",
+                //        buffer->BytesUsed, abandoned_count);
                 
                 // Clear the FRAME_READ flag to stop capturing the old frame
                 buffer->Status &= ~BUF_STREAM_FRAME_READ;
@@ -157,7 +170,7 @@ static void complete_callback(struct urb *urb) {
             
             // Only start NEW frame if ready and not already capturing
             if ((buffer->Status & BUF_STREAM_READ) && !(buffer->Status & BUF_STREAM_FRAME_READ)) {
-                printk(KERN_INFO "ELE784 -> [CASE 2] Starting new frame\n");
+                // printk(KERN_INFO "ELE784 -> [CASE 2] Starting new frame\n");
                 
                 // Reset for new frame
                 buffer->BytesUsed = 0;
@@ -165,12 +178,13 @@ static void complete_callback(struct urb *urb) {
                 buffer->Status |= BUF_STREAM_FRAME_READ;
                 
                 complete(&(buffer->new_frame_start));
-                printk(KERN_INFO "ELE784 -> Frame START (FID=%d)\n", currentFID);
-            } else {
-                printk(KERN_INFO "ELE784 -> [CASE 2] NOT starting frame: READ=%d FRAME_READ=%d\n",
-                       !!(buffer->Status & BUF_STREAM_READ),
-                       !!(buffer->Status & BUF_STREAM_FRAME_READ));  
-            }
+                // printk(KERN_INFO "ELE784 -> Frame START (FID=%d)\n", currentFID);
+            } 
+            // else {
+            //     printk(KERN_INFO "ELE784 -> [CASE 2] NOT starting frame: READ=%d FRAME_READ=%d\n",
+            //            !!(buffer->Status & BUF_STREAM_READ),
+            //            !!(buffer->Status & BUF_STREAM_FRAME_READ));  
+            // }
         }
 
         // =====================================================
@@ -191,13 +205,14 @@ static void complete_callback(struct urb *urb) {
                 buffer->BytesUsed += nbytes;
            
                 // Debug: Log data copy for first packets or EOF packets
-                if (packet_count <= 50 || has_eof) {
-                    printk(KERN_INFO "ELE784 -> [DATA] Copied %u bytes, BytesUsed now %u\n", nbytes, buffer->BytesUsed);
-                }           
-            } else if (packet_count <= 100) {
-                printk(KERN_WARNING "ELE784 -> [DATA] Buffer full! BytesUsed=%u, MaxLength=%u\n", 
-                       buffer->BytesUsed, buffer->MaxLength);
-            }
+                // if (packet_count <= 50 || has_eof) {
+                //     printk(KERN_INFO "ELE784 -> [DATA] Copied %u bytes, BytesUsed now %u\n", nbytes, buffer->BytesUsed);
+                // }           
+            } 
+            // else if (packet_count <= 100) {
+            //     printk(KERN_WARNING "ELE784 -> [DATA] Buffer full! BytesUsed=%u, MaxLength=%u\n", 
+            //            buffer->BytesUsed, buffer->MaxLength);
+            // }
         }
 
         // =====================================================
@@ -205,7 +220,7 @@ static void complete_callback(struct urb *urb) {
         // CRITICAL: Validate frame size before accepting EOF
         // =====================================================
         if (has_eof && !has_fid_toggle) {
-            printk(KERN_INFO "ELE784 -> [CASE 3] EOF without FID toggle detected\n");
+            // printk(KERN_INFO "ELE784 -> [CASE 3] EOF without FID toggle detected\n");
             
             if (buffer->Status & BUF_STREAM_FRAME_READ) {
                 // Check if frame is actually complete
@@ -217,17 +232,29 @@ static void complete_callback(struct urb *urb) {
                     buffer->Status &= ~BUF_STREAM_FRAME_READ;
                     
                     frame_count++;
-                    printk(KERN_INFO "ELE784 -> [CASE 3] Frame #%d COMPLETE: %u bytes, Status=0x%02x\n",
-                           frame_count, buffer->BytesUsed, buffer->Status);
+                    // printk(KERN_INFO "ELE784 -> [CASE 3] Frame #%d COMPLETE: %u bytes, Status=0x%02x\n",
+                    //        frame_count, buffer->BytesUsed, buffer->Status);
+                    // FPS counter - print every second
+                    if (frame_count % 30 == 0) {
+                        unsigned long now = jiffies;
+                        if (last_time != 0) {
+                            unsigned long diff = (now - last_time) * 1000 / HZ;
+                            printk(KERN_INFO "ELE784 -> 30 frames in %lu ms (~%lu FPS)\n", 
+                                   diff, 30000 / diff);
+                        }
+                        last_time = now;
+                    }
                     complete(&(buffer->urb_completion));
-                } else {
-                    // Frame is NOT complete - ignore premature EOF
-                    printk(KERN_WARNING "ELE784 -> [CASE 3] IGNORING premature EOF: %u/%u bytes (continuing capture)\n",
-                           buffer->BytesUsed, EXPECTED_FRAME_SIZE);
-                }
-            } else {
-                printk(KERN_INFO "ELE784 -> [CASE 3] EOF ignored (not capturing), Status=0x%02x\n", buffer->Status);
-            }
+                } 
+                // else {
+                //     // Frame is NOT complete - ignore premature EOF
+                //     printk(KERN_WARNING "ELE784 -> [CASE 3] IGNORING premature EOF: %u/%u bytes (continuing capture)\n",
+                //            buffer->BytesUsed, EXPECTED_FRAME_SIZE);
+                // }
+            } 
+            // else {
+            //     printk(KERN_INFO "ELE784 -> [CASE 3] EOF ignored (not capturing), Status=0x%02x\n", buffer->Status);
+            // }
         }
     }
 

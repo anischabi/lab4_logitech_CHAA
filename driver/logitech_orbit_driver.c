@@ -640,7 +640,8 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
         probe.bmHint          = 1;          // keep same
         probe.bFormatIndex    = FORMAT_INDEX_UNCOMPRESSED_YUYV;// FORMAT_UNCOMPRESSED (YUY2)
         // probe.bFrameIndex     = FRAME_INDEX_320x240;          // 320*240 frame
-        probe.bFrameIndex     = FRAME_INDEX_160x120 ;      // <-- 160*120 frame
+        // probe.bFrameIndex     = FRAME_INDEX_160x120 ;      // <-- 160*120 frame
+        probe.bFrameIndex     = FRAME_INDEX_640x480;    // <-- 640x480 frame
         probe.dwFrameInterval = FRAME_INTERVAL_30FPS;     // 30 fps (from descriptor)
         /* Leave these zero for uncompressed */
         probe.wKeyFrameRate   = 0;
@@ -650,10 +651,11 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
         probe.wDelay          = 0;
         /* From lsusb for 320x240 UNCOMPRESSED */
         // probe.dwMaxVideoFrameSize  = FRAME_SIZE_320x240; // 320*240*2
-        probe.dwMaxVideoFrameSize      = FRAME_SIZE_160x120 ;   // 160*120*2
-        probe.dwMaxPayloadTransferSize = PAYLOAD_SIZE_3060 ; // e.g. 3060
+        // probe.dwMaxVideoFrameSize      = FRAME_SIZE_160x120 ;   // 160*120*2
+        probe.dwMaxVideoFrameSize      = FRAME_SIZE_640x480 ;   // 160*120*2
+        // probe.dwMaxPayloadTransferSize = PAYLOAD_SIZE_3060 ; // e.g. 3060
         /* From VC header */
-        probe.dwClockFrequency = CLOCK_FREQUENCY_300MHZ; // 300 MHz
+        // probe.dwClockFrequency = CLOCK_FREQUENCY_300MHZ; // 300 MHz
         probe.bmFramingInfo    = 0;
         probe.bPreferedVersion = 0;
         probe.bMinVersion      = 0;
@@ -1047,7 +1049,7 @@ ssize_t ele784_read(struct file *file,char __user *buffer,size_t count,loff_t *f
       fb->BytesUsed = 0;
       return -EFAULT;
     }
-    printk(KERN_INFO "ELE784 -> read() returning %zu bytes\n", bytes_to_copy);
+    // printk(KERN_INFO "ELE784 -> read() returning %zu bytes\n", bytes_to_copy);
 
     // =====================================================
     // CLEAN UP FOR NEXT READ()

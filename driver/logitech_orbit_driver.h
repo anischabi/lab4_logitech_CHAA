@@ -27,15 +27,17 @@ MODULE_LICENSE("GPL");
 
 // #define URB_COUNT      1
 #define URB_COUNT      8
-#define MAX_PACKETS    128
-// #define MAX_PACKETS    256
+// #define MAX_PACKETS    128
+#define MAX_PACKETS    256
 
 #define FORMAT_INDEX_UNCOMPRESSED_YUYV 1
 #define FRAME_INDEX_320x240            6
 #define FRAME_INDEX_160x120            3
+#define FRAME_INDEX_640x480            1
 #define FRAME_INTERVAL_30FPS        333333  // in 100ns units
-#define  FRAME_SIZE_320x240         153600  // 320*240*2
-#define  FRAME_SIZE_160x120          38400  // 160*120*2
+#define FRAME_SIZE_320x240         153600  // 320*240*2
+#define FRAME_SIZE_160x120          38400  // 160*120*2
+#define FRAME_SIZE_640x480          (640*480*2)  // 640*480*2
 #define PAYLOAD_SIZE_3060              3060  // from lsusb
 #define CLOCK_FREQUENCY_300MHZ   300000000  // 300 MHz
 
