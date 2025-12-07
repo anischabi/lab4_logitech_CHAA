@@ -11,48 +11,6 @@
 #define FRAME_SIZE_640x480          (640*480*2)  // 640*480*2
 
 
-int get(int fd, uint8_t request, uint16_t value,
-        uint16_t index, uint8_t *buf, uint8_t size)
-{
-    struct usb_request req;
-    req.request   = request;      // GET_CUR / GET_MIN / GET_MAX / ...
-    req.data_size = size;
-    req.value     = value;        // full 16-bit wValue
-    req.index     = index;        // full 16-bit wIndex
-    req.timeout   = TIMEOUT;          // ms
-    req.data      = buf;          // pointer where the kernel writes the result
-
-    if (ioctl(fd, IOCTL_GET, &req) < 0) {
-        perror("IOCTL_GET failed");
-        return -1;
-    }
-    return 0;
-}
-
-void set(int fd, uint8_t request, uint16_t value, uint16_t index,
-         uint8_t *payload, uint8_t size)
-{
-    struct usb_request rq;
-    rq.request   = request;
-    rq.value     = value;
-    rq.index     = index;
-    rq.timeout   = TIMEOUT;
-    rq.data_size = size;
-    rq.data      = payload;
-
-    if (ioctl(fd, IOCTL_SET, &rq) < 0)
-        perror("IOCTL_SET failed");
-}
-
-static void decode_pantilt(uint8_t *b)
-{
-    int16_t pan  = b[0] | (b[1] << 8);
-    int16_t tilt = b[2] | (b[3] << 8);
-
-    printf(" pan=%d  tilt=%d\n", pan, tilt);
-}
-
-
 int main() {
     int fd = open("/dev/camera_control", O_RDWR);
     if (fd < 0) {
@@ -184,57 +142,5 @@ int main() {
     close(fd);
     close(fd1);
     return 0;
-
-
-   // TO BE REWRITED 
-    // /*********************************************
-    // * GET/SET gain + pantilt limits
-    // *********************************************/    
-    // uint8_t gbuf[2]= {0,0};
-    // uint8_t buf[4]= {0,0,0,0};
-    // uint16_t gain = 0; 
-
-    //to be tested later why value and index are switching from 0x0400 and 0x0300
-    // to SELECTOR and INDEX
-    // INDEX IS PANTILT_INDEX 
-
-    // // printf("\n--- GAIN GET_CUR ---\n");
-    // // get(fd, GET_CUR,  0x0400, 0x0300, gbuf, 2);
-    // // uint16_t gain = gbuf[0] | (gbuf[1] << 8);
-    // // printf("gain = %u\n", gain);
-    // // sleep(1);
-    
-    // // printf("\n--- SET GAIN = 50 ---\n");
-    // // gain = 50;
-    // // gbuf[0] = gain & 0xFF;
-    // // gbuf[1] = (gain >> 8) & 0xFF;
-    // // set(fd, SET_CUR,  0x0400, 0x0300, gbuf, 2);
-    // // sleep(1);
-
-    // printf("\n--- GAIN GET_CUR ---\n");
-    // get(fd, GET_CUR,  0x0400, 0x0300, gbuf, 2);
-    // gain = gbuf[0] | (gbuf[1] << 8);
-    // printf("gain = %u\n", gain);
-    // sleep(1);
-    
-    // printf("\n--- GET_CUR ---\n");
-    // get(fd, GET_CUR, SELECTOR, INDEX, buf, 4);
-    // decode_pantilt(buf);
-
-    // printf("\n--- GET_MIN ---\n");
-    // get(fd, GET_MIN, SELECTOR, INDEX, buf, 4);
-    // decode_pantilt(buf);
-
-    // printf("\n--- GET_MAX ---\n");
-    // get(fd, GET_MAX, SELECTOR, INDEX, buf, 4);
-    // decode_pantilt(buf);
-
-    // printf("\n--- GET_RES ---\n");
-    // get(fd, GET_RES, SELECTOR, INDEX, buf, 4);
-    // decode_pantilt(buf);
-
-    // printf("\n--- GET_DEF ---\n");
-    // get(fd, GET_DEF, SELECTOR, INDEX, buf, 4);
-    // decode_pantilt(buf);
 
 }
