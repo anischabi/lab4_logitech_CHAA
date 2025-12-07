@@ -137,8 +137,45 @@ int main() {
     }
     sleep(2);
 
+    // /*********************************************
+    //  * 6) SEND Pan = 4000 and tilt =1000
+    //  *********************************************/
+    printf("\nSending PAN =4000 and TILT = 1000...\n");
+    rel.pan = 4000;
+    rel.tilt = 1000;
 
-        
+    if (ioctl(fd, IOCTL_PANTILT_RELATIVE, &rel) < 0) {
+        perror("IOCTL_PANTILT_RELATIVE (pan =4000 and tilt = 1000) failed");
+    } else {
+        printf("pan =4000 and tilt = 1000 command sent!\n");
+    }
+    sleep(1);
+
+    // /*********************************************
+    //  * 7) SEND Pan = -4000 and tilt =-1000
+    //  *********************************************/
+    printf("\nSending PAN =-4000 and TILT =-1000 #1...\n");
+    rel.pan = -4000;
+    rel.tilt = -1000;
+    if (ioctl(fd, IOCTL_PANTILT_RELATIVE, &rel) < 0) {
+        perror("IOCTL_PANTILT_RELATIVE (pan =-4000 and tilt =-1000) #1 failed");
+    } else {
+        printf("pan = -4000 and tilt = -1000 command #1 sent!\n");
+    }
+    sleep(1);
+
+    /*********************************************
+     * 8) SEND Pan = -4000 and tilt =-1000
+     *********************************************/
+    printf("\nSending PAN =-4000 and TILT =-1000 #2 ...\n");
+    if (ioctl(fd, IOCTL_PANTILT_RELATIVE, &rel) < 0) {
+        perror("IOCTL_PANTILT_RELATIVE (pan = -4000 and tilt = -1000) #2 failed");
+    } else {
+        printf("pan =4000 and tilt = 1000 command #2 sent!\n");
+    } 
+    sleep(1);
+
+    
     close(fd);
     close(fd1);
     return 0;
