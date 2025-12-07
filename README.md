@@ -1,11 +1,25 @@
-Here is the **raw markdown**, ready to paste directly into your README:
 
----
 
 # How to Build and Use the Project
 
 ## 1. Build Everything
 
+### Mandatory software:
+
+* GCC compiler
+* Make
+* SDL2 development package
+* SDL2_ttf development package
+* `sdl2-config` tool (provided by libsdl2-dev)
+
+### Install everything on Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install build-essential libsdl2-dev libsdl2-ttf-dev
+```
+
+### Build
 From the project root:
 
 ```bash
@@ -134,6 +148,3 @@ To remove all compiled files:
 make clean
 ```
 
----
-
-If you want, I can generate a small demo GIF or ASCII schematic to insert into the README as well.
