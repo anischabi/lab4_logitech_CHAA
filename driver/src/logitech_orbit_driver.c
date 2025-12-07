@@ -53,19 +53,19 @@ int ele784_probe(struct usb_interface *interface, const struct usb_device_id *id
   // Get interface descriptor : Determine what kind of interface this is so we know whether to register camera_control or camera_stream.
   iface_desc = interface->cur_altsetting;
 
-  printk(KERN_INFO "ELE784 -> Probe interface number: %d\n", iface_desc->desc.bInterfaceNumber);
-  printk(KERN_INFO "ELE784 -> Interface class: 0x%02x, subclass: 0x%02x, protocol: 0x%02x\n",
-         iface_desc->desc.bInterfaceClass,
-         iface_desc->desc.bInterfaceSubClass,
-         iface_desc->desc.bInterfaceProtocol);
+  // printk(KERN_INFO "ELE784 -> Probe interface number: %d\n", iface_desc->desc.bInterfaceNumber);
+  // printk(KERN_INFO "ELE784 -> Interface class: 0x%02x, subclass: 0x%02x, protocol: 0x%02x\n",
+  //  iface_desc->desc.bInterfaceClass,
+  //  iface_desc->desc.bInterfaceSubClass,
+  //  iface_desc->desc.bInterfaceProtocol);
 
   // Print all alternate settings and endpoint info for this interface
   for (i = 0; i < interface->num_altsetting; i++) {
     struct usb_host_interface *alts = &interface->altsetting[i];
-    printk(KERN_INFO "ELE784 -> AltSetting %d: bNumEndpoints=%d\n",alts->desc.bAlternateSetting, alts->desc.bNumEndpoints);
+    // printk(KERN_INFO "ELE784 -> AltSetting %d: bNumEndpoints=%d\n",alts->desc.bAlternateSetting, alts->desc.bNumEndpoints);
     for (j = 0; j < alts->desc.bNumEndpoints; j++) {
       struct usb_endpoint_descriptor *epd = &alts->endpoint[j].desc;
-      printk(KERN_INFO "ELE784 ->  Endpoint %d: addr=0x%02x, attr=0x%02x, maxpacket=%d\n",j, epd->bEndpointAddress, epd->bmAttributes, epd->wMaxPacketSize);
+      // printk(KERN_INFO "ELE784 ->  Endpoint %d: addr=0x%02x, attr=0x%02x, maxpacket=%d\n",j, epd->bEndpointAddress, epd->bmAttributes, epd->wMaxPacketSize);
     }
   }
   
@@ -607,7 +607,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
           break;
         }
         printk(KERN_INFO "ELE784 -> IOCTL_STREAMON : PROBE_CONTROL(GET_CUR) returned %d bytes:\n", retval);
-        print_probe_control_struct(data);
+        // print_probe_control_struct(data);
         //SHOUL SHOW WHAT GARBAGE THE DEVICE SENDS
 
         // 2 : PROBE_CONTROL(GET_DEF) 
@@ -631,7 +631,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
           break;
         }
         printk(KERN_INFO "ELE784 -> IOCTL_STREAMON : PROBE_CONTROL(GET_DEF) returned %d bytes:\n", retval);
-        print_probe_control_struct(data);
+        // print_probe_control_struct(data);
 
 
 
@@ -663,7 +663,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
 
         pack_probe_control(&probe, data);
         printk(KERN_INFO "ELE784 -> IOCTL_STREAMON : PROBE_CONTROL(SET_CUR) will send :\n");
-        print_probe_control_struct(data);
+        // print_probe_control_struct(data);
 
         // MODIFY DATA BASED ON THE OUPUT OF THE FIRST GET_CUR. CONFIRM THAT THE DATA TO SEND IS CORRECT AND THEN SEND IT
         // 3 : PROBE_CONTROL (SET_CUR)
@@ -710,7 +710,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
           break;
         }
         printk(KERN_INFO "ELE784 -> IOCTL_STREAMON : PROBE_CONTROL(GET_CUR) returned %d bytes:\n", retval);
-        print_probe_control_struct(data);
+        // print_probe_control_struct(data);
 
         /* 4) SET_CUR(COMMIT) – commit the settings */
         // this dont have the rigth format 
@@ -756,13 +756,7 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
             continue;
           ep = &(alts->endpoint[0]);
 
-              /* Debug: print info about this endpoint */
-          printk(KERN_INFO
-                "ELE784 -> alt=%d bEndpointAddress=0x%02x bmAttributes=0x%02x wMaxPacketSize=0x%04x\n",
-                best_altset,
-                ep->desc.bEndpointAddress,
-                ep->desc.bmAttributes,
-                le16_to_cpu(ep->desc.wMaxPacketSize));
+
           /* Skip anything that is NOT isochronous */
           if (!usb_endpoint_xfer_isoc(&ep->desc)) {
               printk(KERN_INFO "ELE784 -> alt=%d: not isochronous, skipping\n",best_altset);
@@ -770,7 +764,6 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
               continue;
           }
           psize = (ep->desc.wMaxPacketSize & 0x07ff) * (((ep->desc.wMaxPacketSize >> 11) & 0x0003) + 1);
-          printk(KERN_INFO "ELE784 -> alt=%d: isoc endpoint, psize=%u, bandwidth=%u\n",best_altset, psize, bandwidth);
           if (psize >= bandwidth)
             break;
         }
@@ -786,12 +779,11 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
             
         // Avec l'interface choisie, on détermine le nombre de Paquets que chaque Urb aura à transporter.
         npackets = ((size % psize) > 0) ? (size/psize + 1) : (size/psize);
-        printk(KERN_INFO "ELE784 -> IOCTL_STREAMON : psize = %u  npackets = %u\n", psize, npackets);
+
         //need to clamp npackets to MAX_PACKETS
         if (npackets > MAX_PACKETS) {
           npackets = MAX_PACKETS;
         }
-        printk(KERN_INFO "ELE784 -> IOCTL_STREAMON : clamped npackets = %u\n", npackets);
         urb_size = psize*npackets;
         printk(KERN_INFO "ELE784 -> IOCTL_STREAMON : bandwidth = %u psize = %u npackets = %u urb_size = %u best_altset = %u\n", bandwidth, psize, npackets, urb_size, best_altset);
         // Et on alloue dynamiquement (obligatoire) le tampon où seront placées les données récoltées par les Urbs.   		
@@ -837,7 +829,6 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
         }
         // Finalement, on créé les Urbs Isochronous (un total de URB_COUNT Urbs).
         for (i = 0; i < URB_COUNT; i++) {
-          printk(KERN_WARNING "ELE784 -> IOCTL_STREAMON : creation urb #i = %d",i);
           driver->isoc_in_urb[i] = usb_alloc_urb(npackets, GFP_KERNEL);
           if (driver->isoc_in_urb[i] == NULL) {
             printk(KERN_WARNING "ELE784 -> IOCTL_STREAMON : URB allocation error");
@@ -904,7 +895,6 @@ long ele784_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
         /* ====== ÉTAPE 3 : Soumission des URBs ====== */
         for (i = 0; i < URB_COUNT; i++) {
           retval = usb_submit_urb(driver->isoc_in_urb[i], GFP_KERNEL);
-          printk(KERN_INFO "ELE784 -> IOCTL_STREAMON: usb_submit_urb[%d] sucess (%d)\n",i, retval); 
           if (retval < 0) {
             printk(KERN_ERR "ELE784 -> IOCTL_STREAMON: usb_submit_urb[%d] failed (%d)\n",i, retval);
             /* First, free the current (failed) URB i */
